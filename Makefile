@@ -1,4 +1,6 @@
-.PHONY: format lint test typecheck verify
+.PHONY: format lint test typecheck verify workload-image
+
+IMAGE ?= kri-workload:local
 
 format:
 	python -m ruff format .
@@ -14,3 +16,6 @@ test:
 	python -m pytest --cov=kri --cov-report=term-missing
 
 verify: lint typecheck test
+
+workload-image:
+	docker build --tag "$(IMAGE)" deploy/workload

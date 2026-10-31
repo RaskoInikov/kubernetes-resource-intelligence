@@ -22,6 +22,7 @@ class Settings(BaseSettings):
 
     k8s_context: NonEmptyString
     k8s_namespace: NonEmptyString
+    workload_image: NonEmptyString
     prometheus_url: AnyHttpUrl
     qdrant_url: AnyHttpUrl
     qdrant_collection: NonEmptyString

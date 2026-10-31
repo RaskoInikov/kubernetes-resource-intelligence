@@ -11,6 +11,7 @@ from kri.config import Settings, load_settings
 ENVIRONMENT = {
     "KRI_K8S_CONTEXT": "kind-test",
     "KRI_K8S_NAMESPACE": "payments",
+    "KRI_WORKLOAD_IMAGE": "kri-workload:test",
     "KRI_PROMETHEUS_URL": "http://prometheus.test:9090",
     "KRI_QDRANT_URL": "http://qdrant.test:6334",
     "KRI_QDRANT_COLLECTION": "kubernetes_knowledge",
@@ -40,6 +41,7 @@ def test_load_settings_from_environment(monkeypatch: pytest.MonkeyPatch) -> None
 
     assert settings.k8s_context == "kind-test"
     assert settings.k8s_namespace == "payments"
+    assert settings.workload_image == "kri-workload:test"
     assert str(settings.prometheus_url) == "http://prometheus.test:9090/"
     assert str(settings.qdrant_url) == "http://qdrant.test:6334/"
     assert settings.qdrant_collection == "kubernetes_knowledge"
@@ -70,6 +72,7 @@ def test_missing_settings_are_rejected() -> None:
     assert missing_fields == {
         "k8s_context",
         "k8s_namespace",
+        "workload_image",
         "prometheus_url",
         "qdrant_url",
         "qdrant_collection",

@@ -31,6 +31,26 @@ M11 — React two-panel interface.
 - Product, architecture, contracts, roadmap, and progress documents are
   consistent about the first-phase boundary and M0 status.
 
+## M1 Acceptance Criteria
+
+- A disposable HTTP application can be built as a container and deployed to an
+  explicitly configured, pre-existing Kubernetes context and namespace.
+- CPU and memory requests and limits plus replica count are validated before a
+  Deployment manifest is submitted; requests cannot exceed their limits.
+- Load configuration is independent of incident labels and supports `cpu`,
+  `memory`, and `mixed` behavior with validated concurrency, request rate, and
+  duration.
+- Load runs as a separately managed Kubernetes Job. Starting or stopping load
+  does not create, update, or delete the application Deployment or Service.
+- Every experiment has a safe unique identifier and a versioned JSON record
+  containing workload/load configuration, UTC timestamps, and lifecycle state.
+- Kubernetes commands always include the configured context and namespace and
+  mutate only fixed, project-owned resource names or a validated experiment Job.
+- Offline tests verify contract rejection, rendered resource safety, independent
+  lifecycle behavior, persistence, and command failures without a live cluster.
+- A documented opt-in procedure distinguishes manifest/offline verification
+  from real-cluster verification and requires explicit approval before mutation.
+
 ## Completion Rules
 
 Each milestone must:

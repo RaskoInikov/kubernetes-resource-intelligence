@@ -3,22 +3,31 @@
 All persisted contracts must be versioned.
 
 ## WorkloadConfiguration
+- Schema version
 - CPU request and limit
 - Memory request and limit
 - Replica count
 
+CPU and memory requests must not exceed their corresponding limits. Quantities
+use Kubernetes CPU (`m` or cores) and binary memory (`Ki`, `Mi`, `Gi`) units.
+
 ## LoadConfiguration
-- Workload mode
-- Concurrency
-- Request rate
-- Duration
+- Schema version
+- Workload mode: `cpu`, `memory`, or `mixed`
+- Positive integer concurrency
+- Positive request rate in requests per second
+- Positive duration in seconds
 
 ## ExperimentRecord
+- Schema version
 - Experiment ID
 - Workload configuration
 - Load configuration
 - Start/end timestamps
-- Lifecycle state
+- Lifecycle state: `running`, `stopped`, `succeeded`, or `failed`
+
+Experiment IDs are lowercase DNS-label-safe identifiers. A running record has no
+end timestamp; terminal records have a UTC end timestamp.
 
 ## WorkloadSnapshot
 - Cluster and workload identity

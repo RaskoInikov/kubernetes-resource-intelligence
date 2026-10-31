@@ -17,6 +17,13 @@
 ### Workload Controller
 Creates and controls disposable Kubernetes experiments.
 
+In M1 it renders a fixed-name application Deployment and Service and a unique
+load Job. It invokes `kubectl` with an explicit context and namespace, persists
+versioned experiment records as JSON artifacts, and never creates namespaces.
+Stopping a load experiment deletes only its Job; application removal is a
+separate operation. The target application and load generator share a small,
+buildable test image but run as separate Kubernetes workloads.
+
 ### Prometheus Collector
 Retrieves real workload time series.
 
@@ -61,5 +68,5 @@ No ClickHouse, crawler, or additional database.
   supported only as a local-development convenience.
 - Configuration validation happens before a component contacts an external
   service.
-- The M0 package contains no collectors, analysis, retrieval, API, workload,
-  or frontend behavior.
+- Collectors, analysis, retrieval, API, monitoring, and frontend behavior remain
+  outside M1.

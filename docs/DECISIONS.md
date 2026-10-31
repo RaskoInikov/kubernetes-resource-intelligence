@@ -24,3 +24,9 @@ The first implementation phase ends at the LLM input package.
 
 ## D008 — Workloads
 Configure workload behavior independently of incident labels.
+
+## D009 — M1 Kubernetes Boundary
+Use a fixed-name Deployment and Service for the disposable application and one
+DNS-label-safe Job per load experiment. Target only a configured, pre-existing
+namespace, pass context and namespace to every `kubectl` call, and keep
+application and load lifecycles independent.
