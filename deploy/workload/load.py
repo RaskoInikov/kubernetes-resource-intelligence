@@ -19,13 +19,22 @@ def _positive(name: str, cast: type[int] | type[float]) -> int | float:
     return value
 
 
-def send_request(target: str, mode: str) -> None:
+def send_request(target: str, mode: str, timeout_seconds: float = 10.0) -> None:
     cpu_ms, memory_mb = WORK[mode]
     with urlopen(
-        f"{target}?cpu_ms={cpu_ms}&memory_mb={memory_mb}", timeout=10
+        f"{target}?cpu_ms={cpu_ms}&memory_mb={memory_mb}",
+        timeout=timeout_seconds,
     ) as response:
         if response.status != 200:
             raise RuntimeError(f"target returned HTTP {response.status}")
+
+
+def _collect_completed(futures: set[Future[None]]) -> bool:
+    """Discard completed work and report whether any request failed."""
+
+    completed = {future for future in futures if future.done()}
+    futures.difference_update(completed)
+    return any(future.exception() is not None for future in completed)
 
 
 def run() -> int:
@@ -41,15 +50,25 @@ def run() -> int:
     interval = 1 / request_rate
     deadline = time.monotonic() + duration
     next_request = time.monotonic()
-    futures: list[Future[None]] = []
+    futures: set[Future[None]] = set()
+    failed = False
     with ThreadPoolExecutor(max_workers=concurrency) as executor:
-        while next_request < deadline:
-            remaining = next_request - time.monotonic()
-            if remaining > 0:
-                time.sleep(remaining)
-            futures.append(executor.submit(send_request, target, mode))
-            next_request += interval
-    return int(any(future.exception() is not None for future in futures))
+        while True:
+            now = time.monotonic()
+            failed = _collect_completed(futures) or failed
+            if now >= deadline:
+                break
+            until_next_request = next_request - now
+            if until_next_request > 0:
+                time.sleep(min(until_next_request, deadline - now))
+                continue
+            if len(futures) < concurrency:
+                timeout_seconds = min(10.0, deadline - now)
+                futures.add(
+                    executor.submit(send_request, target, mode, timeout_seconds)
+                )
+            next_request = now + interval
+    return int(_collect_completed(futures) or failed)
 
 
 if __name__ == "__main__":

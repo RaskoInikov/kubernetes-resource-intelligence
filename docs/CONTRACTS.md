@@ -18,6 +18,11 @@ use Kubernetes CPU (`m` or cores) and binary memory (`Ki`, `Mi`, `Gi`) units.
 - Positive request rate in requests per second
 - Positive duration in seconds
 
+The generator keeps at most `concurrency` requests in flight. Scheduled arrivals
+are skipped while all workers are occupied rather than accumulated in an
+unbounded queue. It stops scheduling at the configured duration, and each
+request timeout is capped by the remaining experiment time.
+
 ## ExperimentRecord
 - Schema version
 - Experiment ID
@@ -30,18 +35,21 @@ Experiment IDs are lowercase DNS-label-safe identifiers. A running record has no
 end timestamp; terminal records have a UTC end timestamp.
 
 ## WorkloadSnapshot
-- Cluster and workload identity
+- Schema version and UTC observation timestamp
+- Cluster, namespace, Deployment name, and Deployment UID identity
 - Deployment UID and resourceVersion
 - Pod identities
 - Container resources
 - Readiness and restarts
 - Kubernetes events
+- Explicit missing-data entries for absent optional observations
 
 ## RawMetricsSnapshot
-- Source and workload identity
-- Observation interval
+- Schema version, Prometheus source, and workload identity
+- UTC collection timestamp and observation interval
 - Metric name, labels, units
 - Timestamped samples
+- Explicit missing-data entries for expected source families with no series
 
 M2 source series and units are:
 
@@ -56,6 +64,14 @@ M2 source series and units are:
 
 Prometheus-derived rates remain derived values, not raw observations. M2 stores
 the source series in Prometheus; M3 will retrieve them into this snapshot contract.
+
+M3 collectors never manufacture samples. A missing-data entry identifies the
+source, field or metric family, and reason. Collector transport/protocol errors
+fail the collection; a successful empty Prometheus result is recorded as
+missing data. Raw metric values are finite numbers and sample timestamps are UTC.
+Prometheus range evaluation timestamps and stored interval boundaries use the
+service's millisecond precision so legitimate boundary samples remain inside
+their declared interval.
 
 ## ObservationSnapshot
 - Schema version

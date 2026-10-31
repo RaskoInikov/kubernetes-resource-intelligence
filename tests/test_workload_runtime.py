@@ -2,6 +2,7 @@
 
 from http import HTTPStatus
 from io import BytesIO
+from time import monotonic, sleep
 from typing import Any
 
 import pytest
@@ -150,7 +151,9 @@ def test_load_runner_reports_success_and_failure(
     }
     for name, value in environment.items():
         monkeypatch.setenv(name, value)
-    monkeypatch.setattr(load, "send_request", lambda target, mode: None)
+    monkeypatch.setattr(
+        load, "send_request", lambda target, mode, timeout_seconds: None
+    )
     assert load.run() == 0
 
     def fail(*args: Any) -> None:
@@ -167,3 +170,35 @@ def test_load_runner_reports_success_and_failure(
     monkeypatch.setenv("CONCURRENCY", "0")
     with pytest.raises(ValueError, match="CONCURRENCY"):
         load.run()
+
+
+def test_load_runner_bounds_in_flight_work_and_shutdown_time(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    environment = {
+        "TARGET_URL": "http://target.test/work",
+        "WORKLOAD_MODE": "mixed",
+        "CONCURRENCY": "2",
+        "REQUEST_RATE": "10000",
+        "DURATION_SECONDS": "0.05",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    timeouts: list[float] = []
+
+    def throttled_request(target: str, mode: str, timeout_seconds: float) -> None:
+        assert target == "http://target.test/work"
+        assert mode == "mixed"
+        timeouts.append(timeout_seconds)
+        sleep(timeout_seconds)
+
+    monkeypatch.setattr(load, "send_request", throttled_request)
+
+    started = monotonic()
+    result = load.run()
+    elapsed = monotonic() - started
+
+    assert result == 0
+    assert 1 <= len(timeouts) <= 2
+    assert all(0 < timeout <= 0.05 for timeout in timeouts)
+    assert elapsed < 0.15

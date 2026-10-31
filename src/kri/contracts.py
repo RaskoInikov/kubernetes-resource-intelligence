@@ -1,12 +1,12 @@
-"""Versioned M1 workload and experiment contracts."""
+"""Versioned workload, experiment, and raw observation contracts."""
 
 import re
-from datetime import datetime
+from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 SCHEMA_VERSION: Literal["1.0"] = "1.0"
 CPU_PATTERN = re.compile(r"^(?P<value>(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))(?P<unit>m?)$")
@@ -115,4 +115,141 @@ class ExperimentRecord(ContractModel):
                 )
             if self.end_timestamp < self.start_timestamp:
                 raise ValueError("end timestamp cannot precede start timestamp")
+        return self
+
+
+class WorkloadIdentity(ContractModel):
+    """Stable identity shared by Kubernetes and Prometheus observations."""
+
+    cluster: str = Field(min_length=1)
+    namespace: str = Field(min_length=1)
+    deployment_name: str = Field(min_length=1)
+    deployment_uid: str = Field(min_length=1)
+
+
+class MissingData(ContractModel):
+    """An expected observation that a source did not provide."""
+
+    source: Literal["kubernetes", "prometheus"]
+    field: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+
+
+class ContainerResources(ContractModel):
+    """Configured resources for one Deployment container."""
+
+    container_name: str = Field(min_length=1)
+    cpu_request: str | None = None
+    cpu_limit: str | None = None
+    memory_request: str | None = None
+    memory_limit: str | None = None
+
+
+class PodObservation(ContractModel):
+    """Identity and lifecycle state for one observed Pod."""
+
+    name: str = Field(min_length=1)
+    uid: str = Field(min_length=1)
+    ready: bool | None
+    restart_count: int | None = Field(default=None, ge=0)
+
+
+class KubernetesEvent(ContractModel):
+    """A Kubernetes event related to the Deployment or its Pods."""
+
+    event_type: str = Field(min_length=1)
+    reason: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+    involved_kind: str = Field(min_length=1)
+    involved_name: str = Field(min_length=1)
+    timestamp: datetime | None
+
+    @field_validator("timestamp")
+    @classmethod
+    def timestamp_is_utc(cls, value: datetime | None) -> datetime | None:
+        if value is None:
+            return None
+        if value.tzinfo is None:
+            raise ValueError("event timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+
+class WorkloadSnapshot(ContractModel):
+    """Raw timestamped Kubernetes workload observation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    observed_at: datetime
+    identity: WorkloadIdentity
+    deployment_resource_version: str = Field(min_length=1)
+    pods: tuple[PodObservation, ...]
+    container_resources: tuple[ContainerResources, ...]
+    events: tuple[KubernetesEvent, ...]
+    missing_data: tuple[MissingData, ...] = ()
+
+    @field_validator("observed_at")
+    @classmethod
+    def observed_at_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("observation timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+
+class MetricSample(ContractModel):
+    """One source timestamp and unmodified numeric metric value."""
+
+    timestamp: datetime
+    value: float = Field(allow_inf_nan=False)
+
+    @field_validator("timestamp")
+    @classmethod
+    def sample_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("sample timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+
+class MetricSeries(ContractModel):
+    """One raw Prometheus series with its source labels and unit."""
+
+    metric_name: str = Field(min_length=1)
+    labels: dict[str, str]
+    unit: str = Field(min_length=1)
+    samples: tuple[MetricSample, ...] = Field(min_length=1)
+
+
+class RawMetricsSnapshot(ContractModel):
+    """Raw range-query results for one explicit workload identity."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    source: Literal["prometheus"] = "prometheus"
+    collected_at: datetime
+    interval_start: datetime
+    interval_end: datetime
+    identity: WorkloadIdentity
+    series: tuple[MetricSeries, ...]
+    missing_data: tuple[MissingData, ...] = ()
+
+    @field_validator("collected_at", "interval_start", "interval_end")
+    @classmethod
+    def timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("metrics timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def interval_is_ordered(self) -> "RawMetricsSnapshot":
+        if self.interval_end <= self.interval_start:
+            raise ValueError("metrics interval end must follow its start")
+        for series in self.series:
+            previous: datetime | None = None
+            for sample in series.samples:
+                if not self.interval_start <= sample.timestamp <= self.interval_end:
+                    raise ValueError(
+                        "metric sample is outside the observation interval"
+                    )
+                if previous is not None and sample.timestamp <= previous:
+                    raise ValueError(
+                        "metric sample timestamps must be strictly increasing"
+                    )
+                previous = sample.timestamp
         return self

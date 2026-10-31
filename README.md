@@ -2,7 +2,8 @@
 
 Kubernetes Resource Intelligence is an evidence-grounded resource analysis
 project. M1 provides a disposable application and independently controlled load;
-M2 adds Prometheus monitoring for container resources and HTTP behavior.
+M2 adds Prometheus monitoring for container resources and HTTP behavior; M3
+adds identity-bound, read-only Kubernetes and Prometheus collectors.
 
 ## Requirements
 
@@ -98,6 +99,11 @@ Deployment or Service. `delete` is the distinct application-removal operation.
 Experiment records are written atomically beneath `results/experiments/` and
 are ignored by Git.
 
+The request rate is a target, not an unbounded queue. If all configured workers
+are occupied, scheduled arrivals are skipped. New requests stop at the duration
+deadline and in-flight request timeouts cannot extend beyond the remaining
+experiment time.
+
 These commands perform persistent Kubernetes mutations and therefore require
 explicit approval before execution. M1's default `make verify` is fully offline
 and uses fake command responses. Optional real-cluster verification must record
@@ -146,3 +152,27 @@ kubectl --context kind-kube-optimizer delete -f deploy/monitoring/prometheus.yam
 
 The monitoring Namespace uses ephemeral storage and the Prometheus image remains
 cached on kind nodes after cleanup.
+
+## M3 read-only collection
+
+`KubernetesCollector` captures the fixed disposable Deployment, matching Pods,
+configured resources, readiness/restarts, and related events. `KubectlReader`
+issues only `get` commands and always supplies `KRI_K8S_CONTEXT` and
+`KRI_K8S_NAMESPACE`. The resulting Deployment UID is the workload identity used
+for the matching `PrometheusCollector` snapshot.
+
+The Prometheus collector performs only `/api/v1/query_range` requests. Callers
+provide a timezone-aware start/end interval and a Kubernetes snapshot so every
+query is restricted to its namespace, workload job, application container, and
+Pod names. Returned data remains raw: source labels, units, timestamps, and
+values are preserved. Empty expected metric families produce `missing_data`
+entries; they never produce zero-valued samples.
+
+Collection is available as a Python API in `kri.collectors`. It does not deploy,
+modify, normalize, aggregate, or persist observations; normalization and
+storage belong to M4. Offline tests use fake source responses. Any claim of
+real-service collection must be verified and reported separately.
+
+The opt-in real-service verifier is `scripts/verify_m3_collectors.py`. It writes
+the complete versioned Kubernetes and raw Prometheus snapshots beneath
+`results/m3-verification/`; those generated artifacts are intentionally ignored.

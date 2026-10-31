@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M2 — Prometheus monitoring infrastructure (complete and kind-verified)
+M3 — Kubernetes and Prometheus collectors (complete and kind-verified)
 
 ## Completed
 - Git repository initialized.
@@ -27,6 +27,18 @@ M2 — Prometheus monitoring infrastructure (complete and kind-verified)
   latency without missing-value substitution.
 - M2 acceptance criteria, source-series units, architecture, and operator
   procedure documented.
+- Versioned raw Kubernetes and Prometheus snapshot contracts added with a
+  shared Deployment UID identity and UTC observation timestamps.
+- Read-only Kubernetes collection added for Deployment resourceVersion,
+  container requests/limits, Pod identity/readiness/restarts, and related
+  events using explicit context and namespace on every command.
+- Read-only Prometheus range collection added for all M2 source series, scoped
+  to the observed namespace, workload, application container, and Pod names.
+- Structured missing-data reporting added for absent Kubernetes observations,
+  absent Pod status, missing events, and empty expected Prometheus families;
+  no missing observation is converted to zero.
+- External command/transport, response-schema, timestamp ordering/range, and
+  identity mismatches now fail explicitly.
 
 ## Verification
 
@@ -68,13 +80,45 @@ M2 — Prometheus monitoring infrastructure (complete and kind-verified)
 - Job-only stop preserved the 2/2-ready application. Cleanup removed all
   M1/M2-owned Kubernetes resources while the unrelated `checkout` and
   `kic-monitoring` workloads remained intact.
+- M3 offline verification passed on 2026-10-31 with fake Kubernetes and
+  Prometheus responses. Tests verified exact read-only command/query scope,
+  raw identity/timestamp/unit preservation, successful and missing-data paths,
+  and malformed or failed external responses without contacting live services.
+- M3 `make verify` passed in the project virtual environment with Ruff, strict
+  mypy, and 110 offline pytest cases at 100% statement and branch coverage.
+- Real-service M3 verification passed on 2026-10-31 against context
+  `kind-kube-optimizer`, namespace `payments`, with Deployment UID
+  `7d67cc31-fd04-47b0-8014-e3a13346b6af` and resourceVersion `1104738`.
+- Kubernetes collection returned the two expected ready, zero-restart Pods,
+  exact approved application resources, and 13 related events with no missing
+  Kubernetes observations.
+- A pre-error range collected 66 series and 528 raw samples across nine source
+  families while reporting only `kri_http_request_errors_total` as missing.
+  No zero-valued replacement was created.
+- After exactly five controlled HTTP 400 responses, a second range collected
+  all ten source families in 68 series and 1,360 samples. The raw error counter
+  total was five; sample timestamps ran from `17:07:29Z` through `17:09:04Z`
+  inside the recorded UTC interval.
+- Real verification exposed and fixed two M3 defects: Prometheus millisecond
+  boundary precision and application selection using the real M2
+  `job="kri-workload"` label instead of a nonexistent `workload` label.
+- Cleanup removed all disposable M1/M2/M3 resources. The unrelated `checkout`
+  Deployment remained 3/3 and the existing `kic-monitoring` Prometheus remained
+  1/1.
+- The M1 load generator shutdown defect found during M3 verification is fixed.
+  Scheduling now admits at most the configured concurrency, discards arrivals
+  while saturated, caps request timeouts by the remaining duration, and never
+  drains an accumulated executor queue after the deadline.
+- An offline overload regression test uses a 10,000 requests/second target with
+  two deliberately slow workers and verifies that only two requests are
+  admitted and shutdown remains duration-bounded.
 
 ## Next
-M3 — Kubernetes and Prometheus collectors.
+M4 — Data normalization and observation storage.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- Python collectors, analysis, knowledge retrieval, API, and frontend are not
-  implemented yet.
+- Normalization/storage, analysis, knowledge retrieval, API, and frontend are
+  not implemented yet.

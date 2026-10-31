@@ -24,6 +24,11 @@ Stopping a load experiment deletes only its Job; application removal is a
 separate operation. The target application and load generator share a small,
 buildable test image but run as separate Kubernetes workloads.
 
+The load generator is rate-controlled but never queues beyond its configured
+concurrency. When the target is throttled or slow, excess scheduled arrivals are
+skipped and in-flight request timeouts are limited by the remaining configured
+duration so executor shutdown cannot drain an accumulated backlog.
+
 ### Prometheus Collector
 Retrieves real workload time series.
 
@@ -34,8 +39,20 @@ container CPU/throttling/working-set series and the application's HTTP counters
 and latency histogram. Storage is an ephemeral six-hour TSDB; no missing value
 is generated or replaced with zero.
 
+In M3 the Python collector calls only Prometheus's read-only range-query API.
+Queries are scoped to the explicit workload namespace/job, application
+container, and Pod identities obtained from Kubernetes. It preserves raw sample
+timestamps, values, labels, and units and reports empty expected families as
+missing instead of synthesizing samples.
+
 ### Kubernetes Collector
 Reads Deployment configuration, Pods, resources, and events.
+
+In M3 it invokes only namespaced `kubectl get` operations with an explicit
+context. The Deployment UID is the durable workload identity carried into both
+collector snapshots; resourceVersion identifies the observed live revision.
+Command or schema failures are explicit, while absent optional resource values,
+Pod observations, or event timestamps are represented as missing data.
 
 ### Observation Builder
 Normalizes and validates collected information.

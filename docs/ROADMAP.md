@@ -40,6 +40,8 @@ M11 — React two-panel interface.
 - Load configuration is independent of incident labels and supports `cpu`,
   `memory`, and `mixed` behavior with validated concurrency, request rate, and
   duration.
+- Load scheduling keeps no more than the configured concurrency in flight and
+  does not extend shutdown to drain queued arrivals after the duration expires.
 - Load runs as a separately managed Kubernetes Job. Starting or stopping load
   does not create, update, or delete the application Deployment or Service.
 - Every experiment has a safe unique identifier and a versioned JSON record
@@ -73,6 +75,29 @@ M11 — React two-panel interface.
 - Real-service verification is opt-in, separately reported, and must prove
   non-empty real series for every required signal before M2 is called
   cluster-verified.
+
+## M3 Acceptance Criteria
+
+- The Kubernetes collector performs only namespaced read operations with an
+  explicit context and captures the Deployment UID/resourceVersion, Pod UIDs,
+  container requests/limits, readiness, restarts, and related events.
+- Kubernetes observations carry a UTC collection timestamp and explicit
+  cluster, namespace, and Deployment identity; optional absent fields are
+  reported as missing data rather than invented.
+- The Prometheus collector uses the HTTP query API without mutating monitoring
+  state and retrieves the raw M2 CPU, throttling, memory, HTTP, error, and
+  latency source series over an explicit UTC interval.
+- Prometheus selectors are restricted to the collected workload namespace,
+  workload job, application container, and observed Pod names. Returned raw
+  samples retain their labels, units, and source timestamps.
+- Every expected source family has an explicit collected-or-missing outcome.
+  Empty query results are valid missing data and are never replaced with zero.
+- Transport failures, command failures, malformed external responses, invalid
+  timestamps, and identity mismatches fail explicitly without producing a
+  partial snapshot that appears complete.
+- Offline tests cover successful collection, exact read-only commands and
+  selectors, timestamp/identity preservation, missing data, and malformed or
+  failed external responses without contacting Kubernetes or Prometheus.
 
 ## Completion Rules
 
