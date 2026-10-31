@@ -176,3 +176,28 @@ real-service collection must be verified and reported separately.
 The opt-in real-service verifier is `scripts/verify_m3_collectors.py`. It writes
 the complete versioned Kubernetes and raw Prometheus snapshots beneath
 `results/m3-verification/`; those generated artifacts are intentionally ignored.
+
+## M4 observations
+
+`ObservationBuilder` combines identity-matched M3 snapshots into a versioned
+`ObservationSnapshot`. The artifact embeds both raw inputs, adds a separate
+canonical normalized view, records structured quality issues, and hashes the
+raw provenance. Normalization preserves source timestamps and values; it does
+not calculate rates or other M5 statistics.
+
+`ObservationStore` saves immutable JSON artifacts atomically beneath a caller-
+selected directory, returns bounded summaries from `inspect`, and uses `replay`
+to rebuild normalized data and quality from embedded raw inputs. Loading rejects
+malformed artifacts or raw-source digest mismatches; replay also rejects changes
+to normalized series, quality, or provenance.
+
+```python
+from pathlib import Path
+from kri.observations import ObservationBuilder, ObservationStore
+
+snapshot = ObservationBuilder().build(workload_snapshot, raw_metrics_snapshot)
+store = ObservationStore(Path("results/observations"))
+store.save(snapshot)
+summary = store.inspect(snapshot.observation_id)
+replayed = store.replay(snapshot.observation_id)
+```

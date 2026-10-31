@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M3 — Kubernetes and Prometheus collectors (complete and kind-verified)
+M4 — Observation normalization and storage (complete, offline-verified)
 
 ## Completed
 - Git repository initialized.
@@ -39,6 +39,17 @@ M3 — Kubernetes and Prometheus collectors (complete and kind-verified)
   no missing observation is converted to zero.
 - External command/transport, response-schema, timestamp ordering/range, and
   identity mismatches now fail explicitly.
+- Versioned observation, normalized-series, quality-report, provenance, and
+  inspection-summary contracts added.
+- Deterministic structural normalization maps all ten M2 source metrics to
+  canonical signals, kinds, units, aggregation scopes, and stable labels while
+  retaining unchanged samples and embedded raw inputs.
+- Quality classification now distinguishes complete, degraded, and insufficient
+  observations with explicit source-missing, family coverage, counter sample,
+  counter reset, histogram bound, unit, label, unknown-series, and collision
+  findings.
+- SHA-256 raw-source provenance, atomic immutable JSON storage, bounded
+  inspection, digest validation, and exact deterministic replay added.
 
 ## Verification
 
@@ -112,13 +123,20 @@ M3 — Kubernetes and Prometheus collectors (complete and kind-verified)
 - An offline overload regression test uses a 10,000 requests/second target with
   two deliberately slow workers and verifies that only two requests are
   admitted and shutdown remains duration-bounded.
+- M4 offline verification passed on 2026-10-31 with complete, degraded,
+  insufficient, identity-mismatch, corruption, filesystem-failure, inspection,
+  and replay cases. The full suite passed with 123 tests at 100% statement and
+  branch coverage, plus Ruff and strict mypy.
+- The retained real M3 post-error evidence replayed locally into
+  `obs-m3-verify-20261031`: quality `complete`, 68 normalized series, 1,360
+  unchanged samples, zero issues, and an exact successful store replay. No live
+  service was contacted for M4 verification.
 
 ## Next
-M4 — Data normalization and observation storage.
+M5 — Deterministic Python analyzer.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- Normalization/storage, analysis, knowledge retrieval, API, and frontend are
-  not implemented yet.
+- Analysis, knowledge retrieval, API, and frontend are not implemented yet.

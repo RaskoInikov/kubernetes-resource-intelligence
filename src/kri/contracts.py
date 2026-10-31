@@ -13,6 +13,7 @@ CPU_PATTERN = re.compile(r"^(?P<value>(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+))(?P<unit>
 MEMORY_PATTERN = re.compile(r"^(?P<value>[1-9][0-9]*)(?P<unit>Ki|Mi|Gi)$")
 MEMORY_FACTORS = {"Ki": 1024, "Mi": 1024**2, "Gi": 1024**3}
 EXPERIMENT_ID_PATTERN = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,46}[a-z0-9])?$")
+OBSERVATION_ID_PATTERN = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
 
 
 def _cpu_cores(quantity: str) -> Decimal:
@@ -253,3 +254,143 @@ class RawMetricsSnapshot(ContractModel):
                     )
                 previous = sample.timestamp
         return self
+
+
+class MetricKind(StrEnum):
+    """Semantics of an unchanged normalized source series."""
+
+    COUNTER = "counter"
+    GAUGE = "gauge"
+    HISTOGRAM_BUCKET = "histogram_bucket"
+    HISTOGRAM_SUM = "histogram_sum"
+    HISTOGRAM_COUNT = "histogram_count"
+
+
+class NormalizedMetricSeries(ContractModel):
+    """Stable M4 view of one raw source series without derived values."""
+
+    signal_name: str = Field(min_length=1)
+    source_metric_name: str = Field(min_length=1)
+    metric_kind: MetricKind
+    unit: str = Field(min_length=1)
+    aggregation_scope: str = Field(min_length=1)
+    labels: dict[str, str]
+    samples: tuple[MetricSample, ...] = Field(min_length=1)
+
+
+class QualitySeverity(StrEnum):
+    """Effect of a quality issue on downstream analysis."""
+
+    WARNING = "warning"
+    ERROR = "error"
+
+
+class QualityStatus(StrEnum):
+    """Overall usability of an observation snapshot."""
+
+    COMPLETE = "complete"
+    DEGRADED = "degraded"
+    INSUFFICIENT = "insufficient"
+
+
+class QualityIssue(ContractModel):
+    """One explicit source or normalization quality condition."""
+
+    severity: QualitySeverity
+    code: str = Field(min_length=1)
+    source: Literal["kubernetes", "prometheus", "normalization"]
+    field: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+
+
+class DataQualityReport(ContractModel):
+    """Versioned deterministic quality assessment for an observation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    status: QualityStatus
+    expected_metric_families: int = Field(ge=0)
+    observed_metric_families: int = Field(ge=0)
+    issues: tuple[QualityIssue, ...]
+
+    @model_validator(mode="after")
+    def status_matches_issues(self) -> "DataQualityReport":
+        has_error = any(
+            issue.severity is QualitySeverity.ERROR for issue in self.issues
+        )
+        expected = (
+            QualityStatus.INSUFFICIENT
+            if has_error
+            else QualityStatus.DEGRADED
+            if self.issues
+            else QualityStatus.COMPLETE
+        )
+        if self.status is not expected:
+            raise ValueError("quality status does not match its issues")
+        return self
+
+
+class ObservationProvenance(ContractModel):
+    """Traceability for the exact raw inputs and M4 builder."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    builder_version: Literal["1.0"] = SCHEMA_VERSION
+    workload_schema_version: str = Field(min_length=1)
+    metrics_schema_version: str = Field(min_length=1)
+    workload_observed_at: datetime
+    metrics_collected_at: datetime
+    source_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("workload_observed_at", "metrics_collected_at")
+    @classmethod
+    def provenance_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("provenance timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+
+class ObservationSnapshot(ContractModel):
+    """Replayable M4 artifact containing raw and normalized observations."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    observation_id: str
+    created_at: datetime
+    workload_snapshot: WorkloadSnapshot
+    raw_metrics_snapshot: RawMetricsSnapshot
+    normalized_series: tuple[NormalizedMetricSeries, ...]
+    quality_report: DataQualityReport
+    provenance: ObservationProvenance
+
+    @field_validator("observation_id")
+    @classmethod
+    def observation_id_is_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("observation ID must be a lowercase DNS label")
+        return value
+
+    @field_validator("created_at")
+    @classmethod
+    def created_at_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("observation creation timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def source_identities_match(self) -> "ObservationSnapshot":
+        if self.workload_snapshot.identity != self.raw_metrics_snapshot.identity:
+            raise ValueError("observation source workload identities do not match")
+        return self
+
+
+class ObservationSummary(ContractModel):
+    """Bounded inspection view for a stored observation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    observation_id: str
+    created_at: datetime
+    identity: WorkloadIdentity
+    interval_start: datetime
+    interval_end: datetime
+    quality_status: QualityStatus
+    issue_count: int = Field(ge=0)
+    normalized_series_count: int = Field(ge=0)
+    sample_count: int = Field(ge=0)

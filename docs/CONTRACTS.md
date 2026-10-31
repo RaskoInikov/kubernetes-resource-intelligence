@@ -74,11 +74,21 @@ service's millisecond precision so legitimate boundary samples remain inside
 their declared interval.
 
 ## ObservationSnapshot
-- Schema version
-- Workload snapshot
-- Normalized time series
-- Data quality report
-- Provenance
+- Schema version, safe observation ID, and UTC creation timestamp
+- Embedded raw `WorkloadSnapshot` and `RawMetricsSnapshot`
+- Deterministically ordered normalized time series with canonical signal name,
+  source metric, metric kind, unit, aggregation scope, stable labels, and the
+  unchanged source samples
+- Versioned data quality report with `complete`, `degraded`, or `insufficient`
+  status and structured severity/code/source/field/message issues
+- Versioned provenance with source schema versions/timestamps, builder version,
+  and a SHA-256 digest of the canonical raw inputs
+
+Normalization is structural. It removes incidental scrape/runtime labels from
+the normalized view but preserves them in the embedded raw snapshot. It does
+not calculate rates, aggregate Pods or containers, repair counters, interpolate
+gaps, or replace missing values. Replay rebuilds the normalized series, quality
+report, and provenance from the embedded raw inputs and requires an exact match.
 
 ## AnalysisReport
 - Calculated statistics

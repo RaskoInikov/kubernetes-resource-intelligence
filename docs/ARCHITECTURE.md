@@ -57,6 +57,18 @@ Pod observations, or event timestamps are represented as missing data.
 ### Observation Builder
 Normalizes and validates collected information.
 
+In M4 it combines identity-matched Kubernetes and Prometheus snapshots into an
+immutable versioned observation. Raw inputs remain embedded; a separate
+deterministic normalized view maps source metrics to canonical signals and
+stable workload scopes without calculating derived values. Structured quality
+issues distinguish missing, insufficient, reset, malformed, and collision
+conditions. Provenance hashes the canonical raw inputs.
+
+The observation store writes one JSON artifact per safe observation ID using
+atomic replacement of a temporary file, refuses overwrites, validates source
+digests on load, exposes a bounded inspection summary, and deterministically
+replays embedded inputs to detect artifact tampering or builder drift.
+
 ### Python Analyzer
 Calculates statistics, findings, and bounded recommendations.
 

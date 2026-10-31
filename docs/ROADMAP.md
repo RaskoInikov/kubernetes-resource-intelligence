@@ -99,6 +99,32 @@ M11 — React two-panel interface.
   selectors, timestamp/identity preservation, missing data, and malformed or
   failed external responses without contacting Kubernetes or Prometheus.
 
+## M4 Acceptance Criteria
+
+- An observation builder accepts one Kubernetes snapshot and one raw metrics
+  snapshot only when their immutable workload identities match.
+- Raw source snapshots remain embedded and distinguishable from normalized
+  series; normalization does not calculate rates, percentiles, statistics, or
+  substitute missing samples.
+- Normalized series use canonical signal names, metric kinds, units, stable
+  workload label scopes, UTC timestamps, and deterministic ordering while
+  preserving every source sample value.
+- A versioned quality report classifies observations as `complete`, `degraded`,
+  or `insufficient` and explicitly reports source missing data, absent or
+  unreported metric families, insufficient counter samples, counter resets,
+  malformed histogram bounds, and normalized-series collisions.
+- Versioned provenance records source schema versions/timestamps, the builder
+  version, and a deterministic SHA-256 digest of both raw inputs.
+- Observation snapshots are stored as immutable JSON artifacts through atomic
+  writes, reject unsafe IDs and overwrite attempts, and fail explicitly on
+  missing, malformed, or source-digest-invalid artifacts.
+- Stored observations can be inspected through a bounded summary and replayed
+  deterministically from their embedded raw inputs; replay rejects normalized,
+  quality, provenance, or raw-source tampering.
+- Offline tests cover complete, degraded, insufficient, invalid-identity,
+  normalization, persistence, inspection, corruption, and replay behavior
+  without contacting Kubernetes or Prometheus.
+
 ## Completion Rules
 
 Each milestone must:
