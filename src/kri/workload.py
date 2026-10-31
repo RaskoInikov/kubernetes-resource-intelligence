@@ -196,7 +196,14 @@ def application_resources(
             "replicas": configuration.replicas,
             "selector": {"matchLabels": {"app.kubernetes.io/name": APPLICATION_NAME}},
             "template": {
-                "metadata": {"labels": pod_labels},
+                "metadata": {
+                    "labels": pod_labels,
+                    "annotations": {
+                        "prometheus.io/scrape": "true",
+                        "prometheus.io/path": "/metrics",
+                        "prometheus.io/port": "8080",
+                    },
+                },
                 "spec": {
                     "automountServiceAccountToken": False,
                     "containers": [
@@ -204,7 +211,7 @@ def application_resources(
                             "name": "application",
                             "image": image,
                             "imagePullPolicy": "IfNotPresent",
-                            "command": ["python", "/opt/kri/app.py"],
+                            "command": ["python", "-m", "kri_workload.app"],
                             "ports": [{"name": "http", "containerPort": 8080}],
                             "resources": resources,
                             "readinessProbe": {
@@ -282,7 +289,7 @@ def load_job_resource(
                             "name": "load-generator",
                             "image": image,
                             "imagePullPolicy": "IfNotPresent",
-                            "command": ["python", "/opt/kri/load.py"],
+                            "command": ["python", "-m", "kri_workload.load"],
                             "env": environment,
                             "resources": {
                                 "requests": {"cpu": "25m", "memory": "32Mi"},

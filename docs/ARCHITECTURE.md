@@ -27,6 +27,13 @@ buildable test image but run as separate Kubernetes workloads.
 ### Prometheus Collector
 Retrieves real workload time series.
 
+M2 establishes collection infrastructure but not the M3 Python collector. A
+project-owned Prometheus discovers annotated `kri-workload` Pods and scrapes
+kubelet cAdvisor through the API-server node proxy. It retains only the required
+container CPU/throttling/working-set series and the application's HTTP counters
+and latency histogram. Storage is an ephemeral six-hour TSDB; no missing value
+is generated or replaced with zero.
+
 ### Kubernetes Collector
 Reads Deployment configuration, Pods, resources, and events.
 
@@ -68,5 +75,5 @@ No ClickHouse, crawler, or additional database.
   supported only as a local-development convenience.
 - Configuration validation happens before a component contacts an external
   service.
-- Collectors, analysis, retrieval, API, monitoring, and frontend behavior remain
-  outside M1.
+- Python collectors, observation building, analysis, retrieval, API, and
+  frontend behavior remain outside M2.

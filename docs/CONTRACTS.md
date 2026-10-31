@@ -43,6 +43,20 @@ end timestamp; terminal records have a UTC end timestamp.
 - Metric name, labels, units
 - Timestamped samples
 
+M2 source series and units are:
+
+- `container_cpu_usage_seconds_total`: cumulative CPU seconds per container.
+- `container_cpu_cfs_periods_total`: cumulative CFS periods per container.
+- `container_cpu_cfs_throttled_periods_total`: cumulative throttled CFS periods.
+- `container_cpu_cfs_throttled_seconds_total`: cumulative throttled seconds.
+- `container_memory_working_set_bytes`: working-set bytes per container.
+- `kri_http_requests_total`: cumulative requests by method, route, and status.
+- `kri_http_request_errors_total`: cumulative HTTP 4xx/5xx requests.
+- `kri_http_request_duration_seconds`: request-duration histogram in seconds.
+
+Prometheus-derived rates remain derived values, not raw observations. M2 stores
+the source series in Prometheus; M3 will retrieve them into this snapshot contract.
+
 ## ObservationSnapshot
 - Schema version
 - Workload snapshot

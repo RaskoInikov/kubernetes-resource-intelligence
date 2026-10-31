@@ -51,6 +51,29 @@ M11 — React two-panel interface.
 - A documented opt-in procedure distinguishes manifest/offline verification
   from real-cluster verification and requires explicit approval before mutation.
 
+## M2 Acceptance Criteria
+
+- The disposable application exposes Prometheus text metrics for HTTP request
+  throughput, errors, and a request-duration histogram without counting its own
+  metrics scrapes.
+- Application Pods carry explicit scrape annotations and stable workload,
+  component, namespace, pod, route, method, and status labels where applicable.
+- A project-owned, disposable Prometheus deployment discovers only annotated
+  application Pods in the configured workload namespace and scrapes kubelet
+  cAdvisor through the Kubernetes API server.
+- cAdvisor ingestion retains CPU usage, CPU CFS periods/throttled periods,
+  throttled seconds, and memory working set; missing series are never synthesized.
+- Prometheus uses bounded resources, six-hour retention, ephemeral storage,
+  non-root execution, and narrowly scoped node-proxy/pod-discovery RBAC.
+- Canonical PromQL is documented for CPU cores, CPU throttle ratio and seconds,
+  memory working set bytes, HTTP requests/errors per second, and latency p95.
+- Offline tests cover exposition success/error behavior, histogram semantics,
+  scrape annotations/configuration, required series, queries, and malformed
+  monitoring assets without contacting a cluster.
+- Real-service verification is opt-in, separately reported, and must prove
+  non-empty real series for every required signal before M2 is called
+  cluster-verified.
+
 ## Completion Rules
 
 Each milestone must:

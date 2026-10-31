@@ -7,8 +7,11 @@ from http import HTTPStatus
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import parse_qs, urlparse
 
+from .metrics import HttpMetrics
+
 MAX_CPU_MS = 1000
 MAX_MEMORY_MB = 512
+METRICS = HttpMetrics()
 
 
 def perform_work(cpu_ms: int, memory_mb: int) -> dict[str, int]:
@@ -31,11 +34,16 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self) -> None:
         parsed = urlparse(self.path)
+        if parsed.path == "/metrics":
+            self._respond_metrics()
+            return
+        started = time.perf_counter()
+        route = parsed.path if parsed.path in {"/healthz", "/work"} else "unknown"
         if parsed.path == "/healthz":
-            self._respond(HTTPStatus.OK, {"status": "ok"})
+            self._complete(started, route, HTTPStatus.OK, {"status": "ok"})
             return
         if parsed.path != "/work":
-            self._respond(HTTPStatus.NOT_FOUND, {"error": "not found"})
+            self._complete(started, route, HTTPStatus.NOT_FOUND, {"error": "not found"})
             return
         try:
             query = parse_qs(parsed.query)
@@ -44,9 +52,11 @@ class Handler(BaseHTTPRequestHandler):
                 int(query.get("memory_mb", ["0"])[0]),
             )
         except (ValueError, TypeError) as error:
-            self._respond(HTTPStatus.BAD_REQUEST, {"error": str(error)})
+            self._complete(
+                started, route, HTTPStatus.BAD_REQUEST, {"error": str(error)}
+            )
             return
-        self._respond(HTTPStatus.OK, result)
+        self._complete(started, route, HTTPStatus.OK, result)
 
     def log_message(self, format: str, *args: object) -> None:
         return
@@ -55,6 +65,24 @@ class Handler(BaseHTTPRequestHandler):
         body = json.dumps(payload).encode()
         self.send_response(status)
         self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        self.wfile.write(body)
+
+    def _complete(
+        self,
+        started: float,
+        route: str,
+        status: HTTPStatus,
+        payload: Mapping[str, object],
+    ) -> None:
+        self._respond(status, payload)
+        METRICS.observe("GET", route, status, time.perf_counter() - started)
+
+    def _respond_metrics(self) -> None:
+        body = METRICS.render().encode()
+        self.send_response(HTTPStatus.OK)
+        self.send_header("Content-Type", "text/plain; version=0.0.4; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
         self.wfile.write(body)

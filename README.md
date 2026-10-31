@@ -1,15 +1,15 @@
 # Kubernetes Resource Intelligence
 
 Kubernetes Resource Intelligence is an evidence-grounded resource analysis
-project. M1 provides a disposable application and an independently controlled
-load generator; monitoring and analysis begin in later milestones.
+project. M1 provides a disposable application and independently controlled load;
+M2 adds Prometheus monitoring for container resources and HTTP behavior.
 
 ## Requirements
 
 - Python 3.12 or newer
 - A virtual environment tool (`venv` is sufficient)
 
-No Kubernetes cluster or external service is needed for M0 verification.
+No Kubernetes cluster or external service is needed for offline verification.
 
 ## Development setup
 
@@ -49,6 +49,7 @@ separately, as required by `AGENTS.md`.
 - `src/kri/` — Python contracts, configuration, and workload controller.
 - `tests/` — offline Python tests.
 - `deploy/workload/` — build context for the disposable target/load image.
+- `deploy/monitoring/` — disposable Prometheus resources and canonical PromQL.
 - `knowledge/` — future canonical knowledge documents.
 - `results/` — generated experiment artifacts (ignored except `.gitkeep`).
 - `web/` — future frontend application.
@@ -102,3 +103,46 @@ explicit approval before execution. M1's default `make verify` is fully offline
 and uses fake command responses. Optional real-cluster verification must record
 the context, namespace, image, commands, and observed results separately; mock
 or dry-run results must not be reported as real integration success.
+
+## M2 Prometheus monitoring
+
+The application exposes `/metrics` with request totals, error totals, and a
+request-duration histogram. Its Pod template carries explicit Prometheus scrape
+annotations. The monitoring manifest installs a separate, project-owned
+Prometheus in `kri-monitoring` and grants read-only access to:
+
+- annotated `kri-workload` Pods in `payments`;
+- node discovery and kubelet cAdvisor through the API-server proxy.
+
+The checked-in manifest targets the configured example namespace `payments`.
+If `KRI_K8S_NAMESPACE` changes, update both namespaced RBAC resources and the
+pod-discovery namespace before applying it.
+
+The following commands are persistent Kubernetes mutations and require explicit
+approval. They are shown as an operator procedure, not run by `make verify`:
+
+```bash
+make workload-image IMAGE=kri-workload:local
+kind load docker-image kri-workload:local --name kube-optimizer
+kubectl --context kind-kube-optimizer apply -f deploy/monitoring/prometheus.yaml
+```
+
+Deploy the M1 application and load as described above, then access Prometheus:
+
+```bash
+kubectl --context kind-kube-optimizer \
+  --namespace kri-monitoring port-forward service/kri-prometheus 9090:9090
+```
+
+Canonical queries for CPU usage, throttling, memory working set, throughput,
+errors, and latency p95 are in `deploy/monitoring/queries.md`. An empty result is
+missing data and must not be treated as zero.
+
+Cleanup removes only project-owned monitoring resources:
+
+```bash
+kubectl --context kind-kube-optimizer delete -f deploy/monitoring/prometheus.yaml
+```
+
+The monitoring Namespace uses ephemeral storage and the Prometheus image remains
+cached on kind nodes after cleanup.

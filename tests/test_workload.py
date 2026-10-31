@@ -83,6 +83,11 @@ def test_application_resources_are_scoped_and_hardened() -> None:
     assert (
         deployment["spec"]["template"]["spec"]["automountServiceAccountToken"] is False
     )
+    assert deployment["spec"]["template"]["metadata"]["annotations"] == {
+        "prometheus.io/scrape": "true",
+        "prometheus.io/path": "/metrics",
+        "prometheus.io/port": "8080",
+    }
     assert service["kind"] == "Service"
     assert "namespace" not in deployment["metadata"]
 

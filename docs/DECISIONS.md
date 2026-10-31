@@ -30,3 +30,15 @@ Use a fixed-name Deployment and Service for the disposable application and one
 DNS-label-safe Job per load experiment. Target only a configured, pre-existing
 namespace, pass context and namespace to every `kubectl` call, and keep
 application and load lifecycles independent.
+
+## D010 — M2 Metrics Sources
+Use kubelet/cAdvisor for container CPU usage, CPU throttling, and memory working
+set. Instrument the disposable application directly for HTTP throughput, errors,
+and latency. Prometheus scrapes both sources and keeps raw series distinct; M2
+does not calculate observations or substitute absent metrics.
+
+## D011 — Disposable Prometheus
+Run project-owned Prometheus resources in `kri-monitoring` with emptyDir storage,
+six-hour retention, a pinned image, non-root security, and least-scope RBAC for
+node proxy metrics and annotated Pod discovery. Do not alter unrelated monitoring
+installations.
