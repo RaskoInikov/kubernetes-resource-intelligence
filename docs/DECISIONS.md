@@ -92,3 +92,13 @@ results; report threshold failure without changing judgments or hiding misses.
 Classify query intent into reference, runbook, or incident scope, retrieve 20
 semantic candidates, and apply a fixed 85% semantic/15% exact-term rerank. Keep
 both component scores so the final ordering remains inspectable.
+
+## D017 — Validated LLM Handoff
+Represent M9 as structured, versioned data rather than free-form prompt text.
+Preserve every M5 finding and uncertainty exactly, include only its transitive
+statistic/evidence closure, and bind the complete M5 and M8 sources with
+canonical digests. Bound retrieved text to three ranked hits per query, twelve
+deduplicated excerpts, and 600 characters per excerpt while recording retrieved
+and included counts. Persist immutable JSON inside a package-digest envelope.
+Reject mismatched or dangling inputs; do not recalculate numbers, invoke an LLM,
+or infer Kubernetes changes.

@@ -209,11 +209,30 @@ payloads never become retrieval evidence.
 - Aggregate mean metrics, explicit minimum thresholds, and pass/fail status
 
 ## LLMInputPackage
-- Observation reference
-- Deterministic findings
-- Numerical recommendations
-- Retrieved evidence
-- Risks and uncertainty
+- Schema/builder version, safe package ID, and UTC creation timestamp
+- Exact workload, analysis, and observation identity plus analyzer/policy and
+  retrieval versions
+- Canonical SHA-256 digests of the complete M5 analysis and M8 evidence inputs
+- Exact M5 sufficiency, conditions, recommendations, risks, and uncertainties
+- Minimal referenced statistics and analysis evidence with original numerical
+  values, units, labels, intervals, and evidence IDs
+- Explicit retrieval status: `retrieved`, `no_hits`, or `no_findings`
+- Deterministic M8 query references with originating finding IDs and retrieved
+  versus included hit counts
+- Bounded ranked hit references with final/semantic/lexical scores and selected
+  excerpt status
+- Deduplicated bounded knowledge excerpts with chunk/point/document identity,
+  exact text digest, source provenance, query IDs, and explicit truncation
+- Fixed machine-readable instructions forbidding numerical invention,
+  autonomous remediation, and presentation of uncertainty as confirmed fact
+
+## LLMInputArtifact
+- Exact `LLMInputPackage`
+- Canonical SHA-256 digest of the complete package
+
+Loading rejects any package-content change, including altered numbers,
+references, risks, uncertainty, or evidence text. Persistence refuses overwrite
+and inspection returns counts and identities rather than the full LLM payload.
 
 ## Invariants
 
@@ -230,3 +249,6 @@ payloads never become retrieval evidence.
   return unverified/malformed payloads as retrieved evidence.
 - Never detach retrieved operational evidence from the deterministic finding
   that requested it or tune evaluation judgments from the system's own results.
+- Never let the LLM input builder recalculate deterministic values, suppress a
+  reported uncertainty, invent missing retrieval evidence, or hide bounded
+  evidence omissions.

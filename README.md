@@ -7,7 +7,9 @@ adds identity-bound, read-only Kubernetes and Prometheus collectors; M4 creates
 replayable observations; M5 produces deterministic, evidence-linked resource
 analysis and bounded recommendations; M6 adds canonical verified knowledge; and
 M7 builds a derived Qdrant index with read-only knowledge inspection and
-retrieval.
+retrieval. M8 retrieves and evaluates analysis-grounded operational evidence;
+M9 builds an integrity-checked, inspectable LLM handoff without invoking a
+model.
 
 ## Requirements
 
@@ -349,3 +351,47 @@ python scripts/verify_m8_retrieval.py \
   --collection kri_m8_verify_20261101 \
   --analysis results/analysis/analysis-m3-verify-20261031.json
 ```
+
+## M9 validated LLM input
+
+`LLMInputBuilder` accepts a matching M5 `AnalysisReport` and M8
+`OperationalEvidencePackage`. It preserves exact findings, numbers, units, and
+uncertainties; selects the minimal referenced statistic/evidence closure; and
+retains bounded knowledge excerpts with query, score, chunk, digest, and source
+traceability. It does not generate prose or call an LLM.
+
+```python
+from pathlib import Path
+
+from kri.llm_input import LLMInputBuilder, LLMInputStore
+
+package = LLMInputBuilder().build(analysis_report, evidence)
+store = LLMInputStore(Path("results/llm-inputs"))
+path = store.save(package)
+summary = store.inspect(package.package_id)
+loaded = store.load(package.package_id)
+```
+
+Artifacts are immutable JSON digest envelopes. Loading detects any alteration
+to a number, reference, uncertainty, or excerpt. M9 includes at most three hits
+per query, twelve deduplicated excerpts, and 600 characters per excerpt; exact
+retrieved/included counts expose bounded omissions. FastAPI and LLM inference
+remain outside M9.
+
+The opt-in real verifier replays a retained observation, recalculates M5,
+synchronizes and evaluates M8 against an explicitly isolated Qdrant collection,
+then saves, reloads, and inspects M9:
+
+```bash
+python scripts/verify_m9_pipeline.py \
+  --url http://127.0.0.1:16335 \
+  --collection kri_m9_pipeline_20261101 \
+  --observation-directory results/observations \
+  --observation-id obs-m3-verify-20261031 \
+  --analysis-id analysis-m9-pipeline-20261101 \
+  --package-id llm-input-m9-pipeline-20261101 \
+  --output-directory results/m9-verification
+```
+
+The command mutates only the named Qdrant collection and generated output
+directory. Run it only against an approved isolated Qdrant instance.

@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M8 — Analysis-grounded retrieval and evaluation (complete, real-service verified)
+M9 — Validated LLM input builder (complete, offline verified)
 
 ## Completed
 - Git repository initialized.
@@ -91,6 +91,19 @@ M8 — Analysis-grounded retrieval and evaluation (complete, real-service verifi
 - A fixed six-case, independently reviewed graded dataset covers CPU, memory,
   missing-data, and historical-incident retrieval with a canonical digest and
   explicit Recall@5, MRR@5, and nDCG@5 thresholds.
+- A versioned M9 builder validates paired M5/M8 identity, source digest,
+  sufficiency, finding coverage, and every referenced condition, statistic, and
+  measurement-evidence ID before constructing an LLM handoff.
+- M9 preserves exact M5 conditions, recommendations, numerical values, units,
+  risks, and uncertainties while selecting only their complete transitive
+  statistic/evidence closure; it performs no analysis or numerical formatting.
+- Retrieval input is bounded to three ranked hits per query, twelve
+  deduplicated 600-character excerpts, and fifty queries. Counts, component
+  scores, chunk/point IDs, content digests, and canonical source provenance
+  retain explicit traceability and expose omissions.
+- Canonical digests bind the complete M5 and M8 inputs. Immutable atomic JSON
+  storage adds a package digest, rejects overwrite and corruption, and exposes
+  a bounded inspection summary.
 
 ## Verification
 
@@ -245,13 +258,39 @@ M8 — Analysis-grounded retrieval and evaluation (complete, real-service verifi
 - The evaluation used dataset digest
   `1e8d153027cd6447dde11e5b6fde62d173c0867f5a8a8db284346a942da4fc17`.
   The isolated container and tmpfs state were removed after verification.
+- M9 `make verify` passed in the project virtual environment on 2026-11-01 with
+  Ruff, strict mypy, and 242 offline pytest cases at 100% statement and branch
+  coverage. The 18 M9 tests cover exact value/uncertainty preservation,
+  transitive closure, retrieval bounds and deduplication, empty/no-hit states,
+  source mismatch and dangling-reference rejection, immutable persistence,
+  corruption, filesystem failures, and inspection without external services or
+  model inference.
+- Real M5→M8→M9 verification passed on 2026-11-01 by replaying retained
+  observation `obs-m3-verify-20261031` against isolated collection
+  `kri_m9_pipeline_20261101` in a Qdrant 1.19.1 tmpfs-backed container. The
+  observation remained complete with 68 normalized series, 1,360 samples, zero
+  quality issues, and source digest
+  `426cb9c29df1c669bc9bdc6bb88d7b264264512a423b847af835576729a9445e`.
+- Fresh M5 analysis `analysis-m9-pipeline-20261101` reproduced 26 statistics,
+  seven conditions, three recommendations, and six explicit uncertainties.
+  Real M8 indexed 26 MiniLM chunks, returned five hits for each of three
+  recommendation queries, and passed the fixed evaluation with Recall@5
+  0.8917, MRR@5 0.9167, and nDCG@5 0.8704.
+- M9 package `llm-input-m9-pipeline-20261101` persisted and reloaded exactly.
+  Inspection reported seven selected statistics, seven conditions, three
+  recommendations, six uncertainties, three queries, nine ranked hit
+  references, and five deduplicated excerpts. Package digest
+  `9a2af625745edc2779de8a30fce3f4ea5080ba680c2553a6a1d5df575e3c89ef`
+  validated on load. Generated artifacts remain under
+  `results/m9-verification/`; the isolated container and tmpfs state were
+  removed after verification.
 
 ## Next
-M9 — Validated LLM input builder.
+M10 — FastAPI integration.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- LLM input construction, FastAPI integration, and the frontend are not
-  implemented yet. M8 exposes local Python retrieval and evaluation APIs only.
+- FastAPI integration, LLM inference, and the frontend are not implemented.
+  M9 exposes local Python construction, persistence, and inspection APIs only.

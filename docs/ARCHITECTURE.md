@@ -146,6 +146,21 @@ or converted into a successful empty result.
 ### LLM Input Builder
 Constructs concise, traceable input for a future LLM.
 
+In M9 it accepts only a fully validated M5 analysis and its matching M8
+operational-evidence package. It copies every condition, recommendation, and
+risk verbatim, includes only the statistic and measurement-evidence closure
+needed by those findings, and never recalculates or formats numerical values.
+The package retains deterministic query references, component scores, chunk
+identities, content digests, and source provenance while bounding included
+knowledge text to the top three hits per query, twelve deduplicated excerpts,
+and 600 characters per excerpt. Counts make every omission explicit.
+
+Canonical SHA-256 digests bind the complete M5 and M8 inputs. An immutable JSON
+store wraps the package in a second digest, uses atomic writes, refuses
+overwrites, validates content on load, and exposes a bounded inspection
+summary. Empty evidence and absent findings are represented explicitly. M9 does
+not construct free-form prompt text, invoke an LLM, or mutate any source.
+
 ### FastAPI
 Exposes workload, monitoring, analysis, and knowledge APIs.
 

@@ -1,6 +1,7 @@
 """Versioned workload, experiment, and raw observation contracts."""
 
 import hashlib
+import json
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
@@ -1011,6 +1012,272 @@ class OperationalEvidencePackage(ContractModel):
         ):
             raise ValueError("evidence bundle identity does not match its package")
         return self
+
+
+class LLMRetrievalStatus(StrEnum):
+    """Whether bounded knowledge is present in an M9 handoff."""
+
+    RETRIEVED = "retrieved"
+    NO_HITS = "no_hits"
+    NO_FINDINGS = "no_findings"
+
+
+class LLMRetrievalQuery(ContractModel):
+    """One M8 query retained without its potentially long hit payloads."""
+
+    query_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    query_kind: EvidenceQueryKind
+    source_id: str = Field(min_length=1)
+    query: str = Field(min_length=1)
+    condition_ids: tuple[str, ...] = Field(min_length=1)
+    statistic_ids: tuple[str, ...] = Field(min_length=1)
+    analysis_evidence_ids: tuple[str, ...] = Field(min_length=1)
+    retrieved_hit_count: int = Field(ge=0, le=20)
+    included_hit_count: int = Field(ge=0, le=3)
+
+    @model_validator(mode="after")
+    def included_hits_do_not_exceed_retrieved(self) -> "LLMRetrievalQuery":
+        if self.included_hit_count > self.retrieved_hit_count:
+            raise ValueError("included retrieval hits cannot exceed retrieved hits")
+        return self
+
+
+class LLMRetrievalHitReference(ContractModel):
+    """Concise ranked M8 result trace retained by M9."""
+
+    query_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    rank: int = Field(ge=1, le=3)
+    chunk_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    point_id: UUID
+    score: float = Field(ge=-1, le=1, allow_inf_nan=False)
+    semantic_score: float = Field(ge=-1, le=1, allow_inf_nan=False)
+    lexical_match_ratio: float = Field(ge=0, le=1, allow_inf_nan=False)
+    selected_as_excerpt: bool
+
+
+class LLMEvidenceExcerpt(ContractModel):
+    """Bounded verified knowledge text with complete canonical provenance."""
+
+    chunk_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    point_id: UUID
+    document_id: str
+    document_type: KnowledgeDocumentType
+    document_title: str = Field(min_length=1)
+    document_version: str
+    section: str = Field(min_length=1)
+    excerpt: str = Field(min_length=1, max_length=600)
+    excerpt_truncated: bool
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sources: tuple[KnowledgeSource, ...] = Field(min_length=1)
+    query_ids: tuple[str, ...] = Field(min_length=1)
+
+    @field_validator("document_id")
+    @classmethod
+    def excerpt_document_id_is_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("excerpt document ID must be a lowercase DNS label")
+        return value
+
+    @field_validator("document_version")
+    @classmethod
+    def excerpt_document_version_is_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("excerpt document version must be semantic")
+        return value
+
+
+LLM_INPUT_INSTRUCTIONS = (
+    "Treat deterministic measurements and recommendations as immutable source data.",
+    "Do not invent missing measurements or replace missing values with zero.",
+    "Distinguish retrieved operational guidance from observed workload evidence.",
+    "State every listed risk and uncertainty; do not present it as confirmed fact.",
+    "Do not claim a resource change was applied or validated and require approval.",
+)
+
+
+class LLMInputPackage(ContractModel):
+    """Validated, bounded, source-bound M9 handoff for a future LLM."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    builder_version: Literal["1.0"] = "1.0"
+    package_id: str
+    created_at: datetime
+    identity: WorkloadIdentity
+    analysis_id: str
+    observation_id: str
+    analysis_created_at: datetime
+    evidence_created_at: datetime
+    analyzer_version: str = Field(min_length=1)
+    policy_version: str = Field(min_length=1)
+    retriever_version: str = Field(min_length=1)
+    analysis_source_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    analysis_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    operational_evidence_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    sufficiency: AnalysisSufficiency
+    retrieval_status: LLMRetrievalStatus
+    statistics: tuple[CalculatedStatistic, ...]
+    conditions: tuple[DetectedCondition, ...]
+    recommendations: tuple[ResourceRecommendation, ...]
+    analysis_evidence: tuple[AnalysisEvidence, ...]
+    risks_and_uncertainties: tuple[str, ...]
+    retrieval_queries: tuple[LLMRetrievalQuery, ...]
+    retrieval_hits: tuple[LLMRetrievalHitReference, ...] = Field(max_length=150)
+    evidence_excerpts: tuple[LLMEvidenceExcerpt, ...] = Field(max_length=12)
+    instructions: tuple[str, ...] = LLM_INPUT_INSTRUCTIONS
+
+    @field_validator("package_id", "analysis_id", "observation_id")
+    @classmethod
+    def llm_input_ids_are_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("LLM input IDs must be lowercase DNS labels")
+        return value
+
+    @field_validator("created_at", "analysis_created_at", "evidence_created_at")
+    @classmethod
+    def llm_input_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("LLM input timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def content_is_closed_ordered_and_bounded(self) -> "LLMInputPackage":
+        if self.instructions != LLM_INPUT_INSTRUCTIONS:
+            raise ValueError("LLM input instructions do not match builder policy")
+        collections = (
+            (self.statistics, "statistic_id", "statistic"),
+            (self.conditions, "condition_id", "condition"),
+            (self.recommendations, "recommendation_id", "recommendation"),
+            (self.analysis_evidence, "evidence_id", "analysis evidence"),
+            (self.retrieval_queries, "query_id", "retrieval query"),
+            (self.evidence_excerpts, "chunk_id", "evidence excerpt"),
+        )
+        for values, attribute, name in collections:
+            ids = [str(getattr(item, attribute)) for item in values]
+            if len(ids) != len(set(ids)):
+                raise ValueError(f"LLM input contains duplicate {name} IDs")
+            if ids != sorted(ids):
+                raise ValueError(f"LLM input {name} records must be sorted")
+
+        required_statistics = {
+            reference
+            for condition in self.conditions
+            for reference in condition.statistic_ids
+        }
+        required_statistics.update(
+            reference
+            for recommendation in self.recommendations
+            for reference in recommendation.statistic_ids
+        )
+        statistic_by_id = {item.statistic_id: item for item in self.statistics}
+        if set(statistic_by_id) != required_statistics:
+            raise ValueError("LLM input statistics are not the minimal finding closure")
+        required_evidence = {
+            reference
+            for condition in self.conditions
+            for reference in condition.evidence_ids
+        }
+        required_evidence.update(
+            reference
+            for recommendation in self.recommendations
+            for reference in recommendation.evidence_ids
+        )
+        required_evidence.update(
+            reference
+            for statistic in self.statistics
+            for reference in statistic.evidence_ids
+        )
+        if {item.evidence_id for item in self.analysis_evidence} != required_evidence:
+            raise ValueError("LLM input evidence is not the complete finding closure")
+
+        query_by_id = {item.query_id: item for item in self.retrieval_queries}
+        hit_keys = [(item.query_id, item.rank) for item in self.retrieval_hits]
+        if len(hit_keys) != len(set(hit_keys)):
+            raise ValueError("LLM input contains duplicate ranked retrieval hits")
+        if hit_keys != sorted(hit_keys):
+            raise ValueError("LLM input retrieval hits must be sorted")
+        if any(item.query_id not in query_by_id for item in self.retrieval_hits):
+            raise ValueError("retrieval hit references an unknown query")
+        for query_id, query in query_by_id.items():
+            ranks = [
+                item.rank for item in self.retrieval_hits if item.query_id == query_id
+            ]
+            if ranks != list(range(1, query.included_hit_count + 1)):
+                raise ValueError("retrieval hit ranks do not match included count")
+
+        selected = {
+            item.chunk_id for item in self.retrieval_hits if item.selected_as_excerpt
+        }
+        excerpt_ids = {item.chunk_id for item in self.evidence_excerpts}
+        if selected != excerpt_ids:
+            raise ValueError("selected retrieval hits do not match evidence excerpts")
+        for excerpt in self.evidence_excerpts:
+            expected_queries = tuple(
+                sorted(
+                    {
+                        item.query_id
+                        for item in self.retrieval_hits
+                        if item.chunk_id == excerpt.chunk_id
+                    }
+                )
+            )
+            if excerpt.query_ids != expected_queries:
+                raise ValueError("evidence excerpt query trace does not match hits")
+
+        has_findings = bool(self.conditions or self.recommendations)
+        has_hits = bool(self.retrieval_hits)
+        expected_status = (
+            LLMRetrievalStatus.NO_FINDINGS
+            if not has_findings
+            else LLMRetrievalStatus.RETRIEVED
+            if has_hits
+            else LLMRetrievalStatus.NO_HITS
+        )
+        if self.retrieval_status is not expected_status:
+            raise ValueError("LLM input retrieval status does not match content")
+        if has_findings and not self.retrieval_queries:
+            raise ValueError("findings require retrieval query trace")
+        if not has_findings and self.retrieval_queries:
+            raise ValueError("finding-free input cannot contain retrieval queries")
+        return self
+
+
+class LLMInputArtifact(ContractModel):
+    """Integrity envelope for one persisted M9 package."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    package: LLMInputPackage
+
+    @model_validator(mode="after")
+    def package_digest_matches(self) -> "LLMInputArtifact":
+        canonical = json.dumps(
+            self.package.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        if hashlib.sha256(canonical).hexdigest() != self.package_sha256:
+            raise ValueError("LLM input package digest does not match")
+        return self
+
+
+class LLMInputSummary(ContractModel):
+    """Bounded inspection view for a persisted M9 package."""
+
+    package_id: str
+    created_at: datetime
+    analysis_id: str
+    observation_id: str
+    identity: WorkloadIdentity
+    sufficiency: AnalysisSufficiency
+    retrieval_status: LLMRetrievalStatus
+    statistic_count: int = Field(ge=0)
+    condition_count: int = Field(ge=0)
+    recommendation_count: int = Field(ge=0)
+    uncertainty_count: int = Field(ge=0)
+    query_count: int = Field(ge=0)
+    hit_reference_count: int = Field(ge=0)
+    excerpt_count: int = Field(ge=0)
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
 class RetrievalJudgment(ContractModel):

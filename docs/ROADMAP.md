@@ -240,6 +240,33 @@ M11 — React two-panel interface.
   datasets, metric boundaries, compatibility failures, and evaluation pass/fail
   behavior without model downloads, Qdrant, Kubernetes, or Prometheus.
 
+## M9 Acceptance Criteria
+
+- The builder accepts only a fully validated M5 analysis and matching M8
+  evidence package, and rejects identity, source-digest, sufficiency, finding,
+  or reference mismatches before producing an artifact.
+- Every M5 condition, recommendation, and risk/uncertainty is preserved exactly;
+  numerical values and units are copied without rounding, formatting, or LLM
+  interpretation.
+- Included statistics and analysis evidence form the complete, minimal closure
+  referenced by findings, including evidence referenced by those statistics.
+- Retrieved knowledge remains traceable through query/source IDs, rank, final,
+  semantic, and lexical scores, chunk/point IDs, text digests, document metadata,
+  and canonical source provenance.
+- Knowledge text is deterministic and concise: at most the top three hits per
+  query are referenced, excerpts are deduplicated by chunk, at most twelve are
+  included, and each is at most 600 characters. Retrieved and included counts
+  expose all truncation.
+- Finding-free and no-hit inputs produce explicit retrieval status rather than
+  invented evidence. Findings without corresponding M8 bundles are rejected.
+- Canonical SHA-256 digests bind both complete inputs. Persisted JSON artifacts
+  are versioned, immutable, atomically written, integrity-checked on load, and
+  available through a bounded inspection summary.
+- Offline tests cover success, exact numerical and uncertainty preservation,
+  closure and retrieval traceability, deterministic bounds, empty evidence,
+  mismatches, malformed inputs, immutable persistence, corruption, and
+  inspection without external services or model inference.
+
 ## Completion Rules
 
 Each milestone must:
