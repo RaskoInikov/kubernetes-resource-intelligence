@@ -72,6 +72,21 @@ replays embedded inputs to detect artifact tampering or builder drift.
 ### Python Analyzer
 Calculates statistics, findings, and bounded recommendations.
 
+In M5 it first replay-validates a stored M4 observation, then calculates
+per-Pod/container CPU, throttling, and memory statistics plus workload-level
+HTTP context. Counter resets and insufficient samples suppress dependent values;
+they are never repaired. Repeated range evaluations are coalesced for CPU peak
+rates so a query step finer than scrape cadence does not inflate peaks. A
+versioned policy applies explicit detection and severity thresholds and emits
+only detected conditions, never negative findings from absent data.
+
+Recommendations are deterministic, increase-only, rounded to Kubernetes units,
+capped at twice the current resource, and always marked as requiring approval.
+Every statistic, condition, and recommendation references exact series/resource
+evidence. M5 does not mutate Kubernetes or use an LLM.
+Reports explicitly retain finite-window, scrape-resolution, near-threshold, and
+recommendation-constraint uncertainty.
+
 ### Knowledge Repository
 Maintains readable documentation, runbooks, and incidents.
 

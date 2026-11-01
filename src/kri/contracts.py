@@ -394,3 +394,171 @@ class ObservationSummary(ContractModel):
     issue_count: int = Field(ge=0)
     normalized_series_count: int = Field(ge=0)
     sample_count: int = Field(ge=0)
+
+
+class AnalysisSufficiency(StrEnum):
+    """Whether available evidence supports deterministic resource analysis."""
+
+    SUFFICIENT = "sufficient"
+    PARTIAL = "partial"
+    INSUFFICIENT = "insufficient"
+
+
+class ConditionSeverity(StrEnum):
+    """Operational importance of a detected resource condition."""
+
+    WARNING = "warning"
+    CRITICAL = "critical"
+
+
+class AnalysisEvidence(ContractModel):
+    """Traceable source used by M5 calculations or policy decisions."""
+
+    evidence_id: str = Field(min_length=1)
+    source: Literal["normalized_series", "workload_configuration", "quality_report"]
+    signal_name: str | None = None
+    resource_field: str | None = None
+    labels: dict[str, str] = Field(default_factory=dict)
+    interval_start: datetime | None = None
+    interval_end: datetime | None = None
+    sample_count: int = Field(ge=0)
+    description: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def interval_is_complete_and_ordered(self) -> "AnalysisEvidence":
+        if (self.interval_start is None) != (self.interval_end is None):
+            raise ValueError("evidence interval must include both boundaries")
+        if self.interval_start is not None:
+            if self.interval_start.tzinfo is None or self.interval_end is None:
+                raise ValueError("evidence interval must be timezone-aware")
+            if self.interval_end.tzinfo is None:
+                raise ValueError("evidence interval must be timezone-aware")
+            if self.interval_end <= self.interval_start:
+                raise ValueError("evidence interval end must follow its start")
+        return self
+
+
+class CalculatedStatistic(ContractModel):
+    """One deterministic M5 calculation."""
+
+    statistic_id: str = Field(min_length=1)
+    name: str = Field(min_length=1)
+    value: float = Field(allow_inf_nan=False)
+    unit: str = Field(min_length=1)
+    aggregation_scope: str = Field(min_length=1)
+    labels: dict[str, str]
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+
+
+class DetectedCondition(ContractModel):
+    """A threshold condition supported by calculated evidence."""
+
+    condition_id: str = Field(min_length=1)
+    condition_type: str = Field(min_length=1)
+    severity: ConditionSeverity
+    message: str = Field(min_length=1)
+    observed_value: float = Field(allow_inf_nan=False)
+    threshold: float = Field(allow_inf_nan=False)
+    comparator: Literal[">="] = ">="
+    statistic_ids: tuple[str, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+
+
+class ResourceRecommendation(ContractModel):
+    """Bounded increase recommendation that always requires approval."""
+
+    recommendation_id: str = Field(min_length=1)
+    resource: Literal["cpu_request", "cpu_limit", "memory_request", "memory_limit"]
+    action: Literal["increase"] = "increase"
+    current_value: str = Field(min_length=1)
+    recommended_value: str = Field(min_length=1)
+    lower_bound: str = Field(min_length=1)
+    upper_bound: str = Field(min_length=1)
+    rationale: str = Field(min_length=1)
+    condition_ids: tuple[str, ...] = Field(min_length=1)
+    statistic_ids: tuple[str, ...] = Field(min_length=1)
+    evidence_ids: tuple[str, ...] = Field(min_length=1)
+    requires_approval: Literal[True] = True
+
+
+class AnalysisProvenance(ContractModel):
+    """Analyzer and source policy identity."""
+
+    analyzer_version: Literal["1.1"] = "1.1"
+    policy_version: Literal["1.1"] = "1.1"
+    observation_source_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class AnalysisReport(ContractModel):
+    """Versioned deterministic resource analysis with traceable evidence."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    analysis_id: str
+    observation_id: str
+    created_at: datetime
+    identity: WorkloadIdentity
+    sufficiency: AnalysisSufficiency
+    provenance: AnalysisProvenance
+    statistics: tuple[CalculatedStatistic, ...]
+    conditions: tuple[DetectedCondition, ...]
+    recommendations: tuple[ResourceRecommendation, ...]
+    evidence: tuple[AnalysisEvidence, ...]
+    risks_and_uncertainties: tuple[str, ...]
+
+    @field_validator("analysis_id", "observation_id")
+    @classmethod
+    def ids_are_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError(
+                "analysis and observation IDs must be lowercase DNS labels"
+            )
+        return value
+
+    @field_validator("created_at")
+    @classmethod
+    def analysis_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("analysis timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def references_are_valid(self) -> "AnalysisReport":
+        evidence_ids = [item.evidence_id for item in self.evidence]
+        statistic_ids = [item.statistic_id for item in self.statistics]
+        condition_ids = [item.condition_id for item in self.conditions]
+        recommendation_ids = [item.recommendation_id for item in self.recommendations]
+        for values, name in (
+            (evidence_ids, "evidence"),
+            (statistic_ids, "statistic"),
+            (condition_ids, "condition"),
+            (recommendation_ids, "recommendation"),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"analysis contains duplicate {name} IDs")
+        evidence_set = set(evidence_ids)
+        statistic_set = set(statistic_ids)
+        condition_set = set(condition_ids)
+        if any(
+            not set(item.evidence_ids).issubset(evidence_set)
+            for item in self.statistics
+        ):
+            raise ValueError("statistic references unknown evidence")
+        if any(
+            not set(item.evidence_ids).issubset(evidence_set)
+            or not set(item.statistic_ids).issubset(statistic_set)
+            for item in self.conditions
+        ):
+            raise ValueError("condition references unknown analysis content")
+        if any(
+            not set(item.evidence_ids).issubset(evidence_set)
+            or not set(item.statistic_ids).issubset(statistic_set)
+            or not set(item.condition_ids).issubset(condition_set)
+            for item in self.recommendations
+        ):
+            raise ValueError("recommendation references unknown analysis content")
+        if (
+            self.sufficiency is AnalysisSufficiency.INSUFFICIENT
+            and self.recommendations
+        ):
+            raise ValueError("insufficient analysis cannot contain recommendations")
+        return self

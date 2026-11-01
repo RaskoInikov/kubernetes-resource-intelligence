@@ -3,7 +3,9 @@
 Kubernetes Resource Intelligence is an evidence-grounded resource analysis
 project. M1 provides a disposable application and independently controlled load;
 M2 adds Prometheus monitoring for container resources and HTTP behavior; M3
-adds identity-bound, read-only Kubernetes and Prometheus collectors.
+adds identity-bound, read-only Kubernetes and Prometheus collectors; M4 creates
+replayable observations; and M5 produces deterministic, evidence-linked resource
+analysis and bounded recommendations.
 
 ## Requirements
 
@@ -47,7 +49,8 @@ separately, as required by `AGENTS.md`.
 
 ## Repository layout
 
-- `src/kri/` — Python contracts, configuration, and workload controller.
+- `src/kri/` — Python contracts, collectors, observations, analysis, and workload
+  controller.
 - `tests/` — offline Python tests.
 - `deploy/workload/` — build context for the disposable target/load image.
 - `deploy/monitoring/` — disposable Prometheus resources and canonical PromQL.
@@ -201,3 +204,29 @@ store.save(snapshot)
 summary = store.inspect(snapshot.observation_id)
 replayed = store.replay(snapshot.observation_id)
 ```
+
+## M5 deterministic analysis
+
+`DeterministicAnalyzer` accepts an M4 snapshot only after replay validation. It
+calculates per-Pod/container CPU, throttling, and memory statistics plus
+workload-level HTTP context, applies policy version `1.0`, and returns a
+versioned `AnalysisReport`. Every finding and recommendation links back to exact
+normalized-series and workload-configuration evidence.
+
+```python
+from pathlib import Path
+from kri.analysis import DeterministicAnalyzer
+from kri.observations import ObservationStore
+
+store = ObservationStore(Path("results/observations"))
+report = DeterministicAnalyzer().analyze_saved(store, "obs-example")
+```
+
+Counter resets and missing inputs suppress dependent results; they are never
+repaired or replaced with zero. Repeated counter evaluations are coalesced for
+CPU peak rates when the query step is finer than scrape cadence. Recommendations
+only increase resources, round to Kubernetes units, remain at or below
+configured limits where applicable, never exceed twice the current value, and
+always require explicit approval. Reports retain finite-window, scrape-cadence,
+near-threshold, and constrained-headroom uncertainty. M5 is read-only and
+performs no Kubernetes mutation.

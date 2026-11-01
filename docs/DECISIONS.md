@@ -42,3 +42,15 @@ Run project-owned Prometheus resources in `kri-monitoring` with emptyDir storage
 six-hour retention, a pinned image, non-root security, and least-scope RBAC for
 node proxy metrics and annotated Pod discovery. Do not alter unrelated monitoring
 installations.
+
+## D012 — Deterministic Analysis Policy
+Analyze resource signals per Pod/container and aggregate only HTTP context.
+Policy version 1.1 detects CPU throttling at 20%, CPU peak/limit saturation at
+90%, memory max/limit pressure at 90%, and request mismatch at 120%. Do not
+repair counter resets or infer negative findings from missing inputs. Emit only
+increase recommendations, round them to Kubernetes units, cap them at twice the
+current setting, and require explicit approval for every resource change.
+Coalesce repeated counter evaluations before calculating CPU peaks. Treat
+throttling at 50%, limit utilization at 100%, and request utilization at 150%
+as critical; lower detected values are warnings. Report finite-window,
+scrape-resolution, near-threshold, and recommendation-cap uncertainty.

@@ -91,12 +91,36 @@ gaps, or replace missing values. Replay rebuilds the normalized series, quality
 report, and provenance from the embedded raw inputs and requires an exact match.
 
 ## AnalysisReport
-- Calculated statistics
-- Data sufficiency
-- Detected conditions
-- Supporting observations
-- Bounded recommendations
-- Risks and uncertainties
+- Schema version, safe analysis ID, observation ID, workload identity, and UTC
+  creation timestamp
+- Analyzer version, policy version, and source observation digest
+- Data sufficiency: `sufficient`, `partial`, or `insufficient`
+- Deterministic statistics with value, unit, aggregation scope, labels, and
+  evidence IDs
+- Detected resource conditions with severity, explicit threshold/comparison,
+  statistic IDs, and evidence IDs
+- Evidence records identifying normalized signal labels/sample intervals or
+  Kubernetes resource fields
+- Increase-only bounded recommendations with current/recommended/lower/upper
+  Kubernetes quantities, condition/statistic/evidence IDs, rationale, and an
+  explicit-approval requirement
+- Risks and uncertainties, including M4 quality issues and unavailable required
+  calculations
+
+M5 uses policy version `1.1`: CPU throttling is detected at a throttled-period
+ratio of 0.20, CPU limit saturation at peak/limit 0.90, memory limit pressure at
+max/limit 0.90, and request mismatch at CPU-average/request or
+memory-p95/request 1.20. Critical severity begins at throttling 0.50, limit
+utilization 1.0, and request utilization 1.50; lower detected values are
+warnings. CPU counter peaks coalesce repeated range evaluations and exclude the
+first potentially partial update when later update intervals are available.
+Recommendations never decrease a resource and never exceed twice its current
+value. CPU recommendations round upward to 10m and memory recommendations to
+1Mi. Resource statistics remain per Pod/container; only HTTP statistics
+aggregate across Pods. Risks identify finite observation windows, limited
+scrape resolution, findings within 5% of a decision boundary, and headroom
+targets constrained by current limits. Recommendations also state that their
+effects remain unvalidated until an approved post-change experiment.
 
 ## KnowledgeDocument
 - Document ID and type

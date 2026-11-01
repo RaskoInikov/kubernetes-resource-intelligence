@@ -125,6 +125,39 @@ M11 — React two-panel interface.
   normalization, persistence, inspection, corruption, and replay behavior
   without contacting Kubernetes or Prometheus.
 
+## M5 Acceptance Criteria
+
+- The deterministic analyzer consumes only replay-validated M4 observations and
+  produces a versioned analysis report tied to the observation ID, workload
+  identity, raw-source digest, analyzer version, and UTC creation timestamp.
+- Per-Pod/container statistics include average and peak CPU cores, CPU request
+  and limit utilization, CFS throttled-period ratio, throttled seconds/second,
+  and mean/p95/max memory working set and request/limit utilization. Aggregate
+  HTTP statistics include throughput, error ratio, mean latency, and histogram
+  p95 for the `/work` route when their inputs are sufficient.
+- Counter rates use positive deltas over real sample intervals. Reset or
+  insufficient counters are excluded from dependent calculations rather than
+  repaired, clamped, or interpreted as zero. CPU peaks coalesce repeated range
+  evaluations so query steps finer than scrape cadence do not inflate rates.
+- Conditions use versioned explicit thresholds: CPU throttling at 20%, CPU
+  peak/limit at 90%, memory max/limit at 90%, and CPU-average or memory-p95
+  request utilization at 120%. Missing inputs never produce a negative finding.
+- Supporting evidence identifies the exact normalized series labels, interval,
+  sample count, and configured resource fields used by every statistic,
+  condition, and recommendation.
+- Recommendations are deterministic, increase-only, require explicit approval,
+  preserve request-at-or-below-limit invariants, round to Kubernetes units, and
+  are capped at twice the current setting. Insufficient observations produce no
+  recommendations.
+- Reports distinguish sufficient, partial, and insufficient analysis and carry
+  explicit risks/uncertainties derived from M4 quality issues and unavailable
+  required calculations, finite windows, scrape resolution, decision-boundary
+  proximity, and recommendation constraints.
+- Offline tests cover threshold boundaries, per-container scope, histogram
+  calculation, reset/missing data, insufficient suppression, recommendation
+  rounding/caps, evidence traceability, deterministic saved-observation input,
+  and malformed analysis contracts without external services.
+
 ## Completion Rules
 
 Each milestone must:

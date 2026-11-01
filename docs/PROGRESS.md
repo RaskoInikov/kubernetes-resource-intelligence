@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M4 — Observation normalization and storage (complete, offline-verified)
+M5 — Deterministic analyzer (complete, offline-verified)
 
 ## Completed
 - Git repository initialized.
@@ -50,6 +50,16 @@ M4 — Observation normalization and storage (complete, offline-verified)
   findings.
 - SHA-256 raw-source provenance, atomic immutable JSON storage, bounded
   inspection, digest validation, and exact deterministic replay added.
+- Versioned analysis contracts added for sufficiency, statistics, detected
+  conditions, source evidence, provenance, risks, and bounded recommendations.
+- Replay-validated deterministic analysis now calculates per-Pod/container CPU,
+  throttling, and memory statistics and workload-level HTTP throughput, error,
+  mean-latency, and histogram-p95 statistics without fabricating missing values.
+- Policy version 1.0 detects CPU throttling, CPU and memory limit pressure, and
+  request mismatch at documented inclusive thresholds with exact evidence links.
+- Recommendations are increase-only, Kubernetes-unit rounded, capped at twice
+  current resources and applicable configured limits, and explicitly require
+  approval. Insufficient evidence suppresses conditions and recommendations.
 
 ## Verification
 
@@ -131,12 +141,39 @@ M4 — Observation normalization and storage (complete, offline-verified)
   `obs-m3-verify-20261031`: quality `complete`, 68 normalized series, 1,360
   unchanged samples, zero issues, and an exact successful store replay. No live
   service was contacted for M4 verification.
+- M5 `make verify` passed in the project virtual environment on 2026-10-31 with
+  Ruff, strict mypy, and 140 offline pytest cases at 100% statement and branch
+  coverage.
+- M5 tests cover threshold boundaries, per-container scoping, reset and missing
+  counters, malformed histograms and contracts, sufficient/partial/insufficient
+  outcomes, deterministic saved input, evidence references, and recommendation
+  rounding, caps, invariant preservation, and rejection paths.
+- The retained real M4 observation was replayed locally into analysis
+  `analysis-m3-verify-20261031`: sufficient, 26 statistics, seven conditions,
+  72 evidence records, and three approval-required recommendations. Analyzer
+  policy 1.1 recommends CPU limit `100m` to `160m`, CPU request `50m` to `100m`,
+  and memory request `64Mi` to `97Mi`. It records six finite-window,
+  scrape-resolution, constrained-headroom, and near-threshold uncertainties. No
+  live service or cluster mutation was used.
+- Real-artifact replay exposed and fixed false duplicate-scope warnings caused
+  by indexing HTTP series as resource series; a regression test now restricts
+  duplicate suppression to CPU, throttling, and memory signals.
+- M5 review on 2026-11-01 found that five-second query evaluations repeated
+  slower scrape values and inflated adjacent CPU peaks about threefold. Policy
+  1.1 coalesces repeated evaluations and excludes the first partial update,
+  correcting Pod peaks from 334m/286m to 126m/95m and the CPU-limit adjustment
+  from 200m to 160m.
+- The same review replaced the raw-ratio severity shortcut with explicit
+  condition-specific critical thresholds, corrected request-versus-limit
+  recommendation rationale, and reports limits that prevent the intended 25%
+  headroom. Full verification passed with 142 tests and 100% statement and
+  branch coverage, plus Ruff and strict mypy.
 
 ## Next
-M5 — Deterministic Python analyzer.
+M6 — Knowledge repository and retrieval.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- Analysis, knowledge retrieval, API, and frontend are not implemented yet.
+- Knowledge retrieval, API, and frontend are not implemented yet.
