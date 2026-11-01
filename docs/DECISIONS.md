@@ -80,3 +80,15 @@ and queries, record the exact model name and embedder version in derived
 payloads, and bump the incompatible Qdrant index schema to 2.0. Keep offline
 tests deterministic and network-free by injecting a model double through the
 same validated embedding boundary.
+
+## D016 — Analysis-Grounded Retrieval Evaluation
+Construct M8 retrieval queries only from validated M5 condition and
+recommendation fields, and retain every originating analysis reference in the
+retrieved evidence package. Query once per recommendation and group remaining
+conditions by type to avoid replica-count-dependent duplicate retrieval. Measure
+quality against a fixed, separately authored and reviewed graded-judgment
+dataset using Recall@k, MRR@k, and nDCG@k. Record the dataset digest and exact
+results; report threshold failure without changing judgments or hiding misses.
+Classify query intent into reference, runbook, or incident scope, retrieve 20
+semantic candidates, and apply a fixed 85% semantic/15% exact-term rerank. Keep
+both component scores so the final ordering remains inspectable.

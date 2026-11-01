@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M7 — Qdrant indexing and knowledge inspection API (complete, offline-verified)
+M8 — Analysis-grounded retrieval and evaluation (complete, real-service verified)
 
 ## Completed
 - Git repository initialized.
@@ -82,6 +82,15 @@ M7 — Qdrant indexing and knowledge inspection API (complete, offline-verified)
 - A read-only Python inspection API lists canonical documents, reports index
   metadata, inspects bounded document-scoped chunks, resolves exact chunks, and
   returns bounded verified-only retrieval results with validated payloads.
+- Analysis-grounded retrieval creates one query per recommendation and groups
+  remaining condition types, retaining every originating M5 condition,
+  statistic, and measurement-evidence reference with the retrieved chunks.
+- Operational queries use deterministic reference/runbook/incident intent
+  scoping and an 85% semantic/15% exact-term rerank over 20 candidates while
+  preserving the semantic, lexical, and final scores.
+- A fixed six-case, independently reviewed graded dataset covers CPU, memory,
+  missing-data, and historical-incident retrieval with a canonical digest and
+  explicit Recall@5, MRR@5, and nDCG@5 thresholds.
 
 ## Verification
 
@@ -222,13 +231,27 @@ M7 — Qdrant indexing and knowledge inspection API (complete, offline-verified)
   verified status and source provenance.
 - The isolated container and its tmpfs storage were removed after verification;
   only the downloaded MiniLM model cache remains locally.
+- M8 `make verify` passed in the project virtual environment on 2026-11-01 with
+  Ruff, strict mypy, and 224 offline pytest cases at 100% statement and branch
+  coverage. Offline retrieval tests use deterministic doubles and contact no
+  model service or Qdrant instance.
+- Real M8 verification used the retained M5 analysis and an isolated Qdrant
+  1.19.1 tmpfs-backed container with collection `kri_m8_verify_20261101`. It
+  produced three recommendation evidence bundles with exact M5 reference IDs.
+- The fixed dataset initially exposed insufficient ranking quality; judgments
+  and thresholds were left unchanged. After deterministic intent scoping and
+  traceable reranking, the final run passed with mean Recall@5 0.8917, MRR@5
+  0.9167, and nDCG@5 0.8704 against thresholds 0.50, 0.80, and 0.70.
+- The evaluation used dataset digest
+  `1e8d153027cd6447dde11e5b6fde62d173c0867f5a8a8db284346a942da4fc17`.
+  The isolated container and tmpfs state were removed after verification.
 
 ## Next
-M8 — RAG retrieval and evaluation.
+M9 — Validated LLM input builder.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- RAG evaluation, LLM input construction, FastAPI integration, and the frontend
-  are not implemented yet. M7 exposes a local Python inspection API only.
+- LLM input construction, FastAPI integration, and the frontend are not
+  implemented yet. M8 exposes local Python retrieval and evaluation APIs only.

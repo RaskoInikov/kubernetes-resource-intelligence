@@ -123,6 +123,26 @@ cosine retrieval. Retrieval filters to `verified` knowledge by default and
 returns exact chunk text and provenance. M7 does not build an LLM prompt or
 expose FastAPI routes.
 
+In M8 the analysis evidence retriever accepts a validated M5 `AnalysisReport`,
+constructs deterministic queries for each recommendation, and adds grouped
+queries for condition types not already represented by a recommendation. Each
+returned bundle retains the analysis, observation, condition, statistic, and
+measurement-evidence IDs that caused the query. It does not reinterpret M5
+measurements or create new recommendations.
+
+M8 first classifies query intent as Kubernetes reference, diagnostic runbook, or
+historical incident. It retrieves up to 20 semantic candidates in that scope and
+reranks them deterministically using 85% MiniLM cosine score and 15% exact query
+term coverage across chunk metadata and text. Both component scores and the
+final score remain in the result trace.
+
+Retrieval quality is measured against a fixed, versioned JSON dataset with
+graded chunk judgments, explicit author/reviewer separation, repository and
+model identity, and a UTC review timestamp. Evaluation records the exact
+dataset digest and returned point IDs/scores, then calculates Recall@k, MRR@k,
+and nDCG@k per case and in aggregate. Evaluation failure is reported, not hidden
+or converted into a successful empty result.
+
 ### LLM Input Builder
 Constructs concise, traceable input for a future LLM.
 

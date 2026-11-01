@@ -1,0 +1,80 @@
+{
+  "schema_version": "1.0",
+  "dataset_version": "1.0.0",
+  "repository_version": "1.0.0",
+  "index_schema_version": "2.0",
+  "embedding_model": "sentence-transformers/all-MiniLM-L6-v2",
+  "authored_by": "retrieval-evaluation-authors",
+  "reviewed_by": "project-knowledge-reviewers",
+  "reviewed_at": "2026-11-01T12:30:00Z",
+  "review_notes": "Judgments were reviewed independently of retrieval output against the canonical document text. Relevance 3 directly answers the query, 2 supplies important corroboration, and 1 supplies useful safety context.",
+  "thresholds": {
+    "mean_recall_at_k": 0.5,
+    "mean_reciprocal_rank_at_k": 0.8,
+    "mean_ndcg_at_k": 0.7
+  },
+  "cases": [
+    {
+      "case_id": "cpu-counter-cadence",
+      "query": "How can Prometheus query cadence inflate calculated Kubernetes CPU peaks?",
+      "k": 5,
+      "judgments": [
+        {"chunk_id": "incident-m5-counter-cadence-chunk-001", "relevance": 3},
+        {"chunk_id": "incident-m5-counter-cadence-chunk-002", "relevance": 3},
+        {"chunk_id": "incident-m5-counter-cadence-chunk-003", "relevance": 2}
+      ]
+    },
+    {
+      "case_id": "cpu-request-limit-semantics",
+      "query": "What is the difference between a Kubernetes CPU request and CPU limit when diagnosing high usage?",
+      "k": 5,
+      "judgments": [
+        {"chunk_id": "kubernetes-resource-requests-and-limits-chunk-001", "relevance": 3},
+        {"chunk_id": "kubernetes-resource-requests-and-limits-chunk-002", "relevance": 3},
+        {"chunk_id": "kubernetes-resource-requests-and-limits-chunk-003", "relevance": 1}
+      ]
+    },
+    {
+      "case_id": "cpu-throttling-diagnosis",
+      "query": "How should high Kubernetes CPU CFS throttling near a container limit be diagnosed and verified?",
+      "k": 5,
+      "judgments": [
+        {"chunk_id": "kubernetes-resource-requests-and-limits-chunk-001", "relevance": 2},
+        {"chunk_id": "runbook-cpu-throttling-chunk-001", "relevance": 2},
+        {"chunk_id": "runbook-cpu-throttling-chunk-002", "relevance": 3},
+        {"chunk_id": "runbook-cpu-throttling-chunk-003", "relevance": 3},
+        {"chunk_id": "runbook-cpu-throttling-chunk-004", "relevance": 2}
+      ]
+    },
+    {
+      "case_id": "memory-sizing",
+      "query": "How should memory working set evidence be used to adjust Kubernetes requests while preserving limit safety?",
+      "k": 5,
+      "judgments": [
+        {"chunk_id": "kubernetes-resource-requests-and-limits-chunk-001", "relevance": 1},
+        {"chunk_id": "runbook-memory-sizing-chunk-002", "relevance": 3},
+        {"chunk_id": "runbook-memory-sizing-chunk-003", "relevance": 3},
+        {"chunk_id": "runbook-memory-sizing-chunk-004", "relevance": 1}
+      ]
+    },
+    {
+      "case_id": "missing-data",
+      "query": "Why must missing Kubernetes or Prometheus resource metrics not be interpreted as zero?",
+      "k": 5,
+      "judgments": [
+        {"chunk_id": "kubernetes-resource-metrics-chunk-001", "relevance": 3},
+        {"chunk_id": "kubernetes-resource-metrics-chunk-003", "relevance": 3}
+      ]
+    },
+    {
+      "case_id": "prometheus-boundaries",
+      "query": "What real collector failure showed that Prometheus timestamp precision and workload labels must be verified?",
+      "k": 5,
+      "judgments": [
+        {"chunk_id": "incident-m3-collector-boundaries-chunk-001", "relevance": 3},
+        {"chunk_id": "incident-m3-collector-boundaries-chunk-002", "relevance": 3},
+        {"chunk_id": "incident-m3-collector-boundaries-chunk-003", "relevance": 2}
+      ]
+    }
+  ]
+}

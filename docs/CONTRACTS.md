@@ -170,17 +170,43 @@ verification time. `needs_review` material cannot claim verification metadata.
 - Repository, collection, index schema, and embedder versions
 - Ordered hits with score, exact chunk identity/text/digest, document metadata,
   verification status, tags, section, and source provenance
+- M8-reranked hits additionally retain the original semantic score and lexical
+  match ratio; either both component scores are present or neither is
 
 M7 retrieval returns only `verified` documents unless a future explicit
 contract broadens that policy. Scores must be finite and non-increasing. Qdrant
 payloads are validated back into KnowledgeChunk contracts; malformed or foreign
 payloads never become retrieval evidence.
 
-## EvidenceBundle
-- Retrieval query
-- Retrieved document/chunk IDs
-- Supporting passages
-- Retrieval scores and metadata
+## OperationalEvidenceBundle
+- Stable query ID and query kind (`recommendation` or `condition`)
+- Source recommendation or condition-type identity
+- Originating analysis/observation, condition, statistic, and analysis-evidence
+  IDs
+- Exact validated M7 retrieval result, including query, scores, chunks, source
+  provenance, repository version, index schema, and embedding model
+
+## OperationalEvidencePackage
+- Retrieval schema/retriever version and UTC creation timestamp
+- Analysis identity, observation identity, analysis source digest, and
+  sufficiency
+- Deterministically ordered evidence bundles; analyses without findings produce
+  an explicit empty package rather than invented evidence
+
+## RetrievalEvaluationDataset
+- Semantic dataset version, repository version, index schema, embedding model,
+  UTC review time, author, independent reviewer, and review notes
+- Fixed, uniquely identified queries with bounded `k` and one or more graded
+  relevant chunk judgments
+- Author and reviewer identities must differ; duplicate cases or judgments are
+  invalid
+
+## RetrievalEvaluationReport
+- Dataset version and canonical SHA-256 digest plus repository/index/model
+  identity and UTC evaluation timestamp
+- Per-case returned chunk IDs/scores, relevant retrieved IDs, Recall@k, MRR@k,
+  and nDCG@k; each hit retains final, semantic, and lexical scores
+- Aggregate mean metrics, explicit minimum thresholds, and pass/fail status
 
 ## LLMInputPackage
 - Observation reference
@@ -202,3 +228,5 @@ payloads never become retrieval evidence.
   document as canonical verified evidence.
 - Never treat Qdrant state as canonical, delete foreign points during sync, or
   return unverified/malformed payloads as retrieved evidence.
+- Never detach retrieved operational evidence from the deterministic finding
+  that requested it or tune evaluation judgments from the system's own results.

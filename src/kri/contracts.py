@@ -885,12 +885,18 @@ class KnowledgeRetrievalHit(ContractModel):
     """One validated verified-knowledge result from Qdrant."""
 
     score: float = Field(ge=-1, le=1, allow_inf_nan=False)
+    semantic_score: float | None = Field(default=None, ge=-1, le=1, allow_inf_nan=False)
+    lexical_match_ratio: float | None = Field(
+        default=None, ge=0, le=1, allow_inf_nan=False
+    )
     chunk: KnowledgeChunk
 
     @model_validator(mode="after")
     def retrieved_chunk_is_verified(self) -> "KnowledgeRetrievalHit":
         if self.chunk.verification_status is not KnowledgeVerificationStatus.VERIFIED:
             raise ValueError("retrieval hits must be verified knowledge")
+        if (self.semantic_score is None) != (self.lexical_match_ratio is None):
+            raise ValueError("reranked hits require semantic and lexical scores")
         return self
 
 
@@ -934,4 +940,238 @@ class KnowledgeRetrievalResult(ContractModel):
             raise ValueError("retrieval hits must have unique point IDs")
         if len(self.hits) > self.limit:
             raise ValueError("retrieval hits cannot exceed the requested limit")
+        return self
+
+
+class EvidenceQueryKind(StrEnum):
+    """M5 finding category that requested operational knowledge."""
+
+    RECOMMENDATION = "recommendation"
+    CONDITION = "condition"
+
+
+class OperationalEvidenceBundle(ContractModel):
+    """One traceable M8 query and its exact validated M7 result."""
+
+    query_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    query_kind: EvidenceQueryKind
+    source_id: str = Field(min_length=1)
+    analysis_id: str = Field(min_length=1)
+    observation_id: str = Field(min_length=1)
+    condition_ids: tuple[str, ...] = Field(min_length=1)
+    statistic_ids: tuple[str, ...] = Field(min_length=1)
+    analysis_evidence_ids: tuple[str, ...] = Field(min_length=1)
+    query: str = Field(min_length=1)
+    retrieval: KnowledgeRetrievalResult
+
+    @model_validator(mode="after")
+    def query_and_references_are_consistent(self) -> "OperationalEvidenceBundle":
+        if self.query.strip() != self.query or self.query != self.retrieval.query:
+            raise ValueError("evidence bundle query must match its retrieval query")
+        for values, name in (
+            (self.condition_ids, "condition"),
+            (self.statistic_ids, "statistic"),
+            (self.analysis_evidence_ids, "analysis evidence"),
+        ):
+            if len(values) != len(set(values)):
+                raise ValueError(f"evidence bundle contains duplicate {name} IDs")
+        return self
+
+
+class OperationalEvidencePackage(ContractModel):
+    """All M8 operational knowledge retrieved for one deterministic analysis."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    retriever_version: Literal["1.0"] = "1.0"
+    analysis_id: str
+    observation_id: str
+    analysis_source_digest_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    analysis_sufficiency: AnalysisSufficiency
+    created_at: datetime
+    bundles: tuple[OperationalEvidenceBundle, ...]
+
+    @field_validator("created_at")
+    @classmethod
+    def evidence_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("evidence package timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def package_identity_and_order_are_consistent(self) -> "OperationalEvidencePackage":
+        query_ids = [bundle.query_id for bundle in self.bundles]
+        if len(query_ids) != len(set(query_ids)):
+            raise ValueError("evidence package contains duplicate query IDs")
+        if query_ids != sorted(query_ids):
+            raise ValueError("evidence package bundles must be sorted by query ID")
+        if any(
+            bundle.analysis_id != self.analysis_id
+            or bundle.observation_id != self.observation_id
+            for bundle in self.bundles
+        ):
+            raise ValueError("evidence bundle identity does not match its package")
+        return self
+
+
+class RetrievalJudgment(ContractModel):
+    """Independent graded relevance judgment for one canonical chunk."""
+
+    chunk_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    relevance: int = Field(ge=1, le=3)
+
+
+class RetrievalEvaluationCase(ContractModel):
+    """One fixed reviewed query and its relevant chunks."""
+
+    case_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    query: str = Field(min_length=1)
+    k: int = Field(ge=1, le=20)
+    judgments: tuple[RetrievalJudgment, ...] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def evaluation_case_is_canonical(self) -> "RetrievalEvaluationCase":
+        if self.query.strip() != self.query:
+            raise ValueError("evaluation query must not have surrounding whitespace")
+        chunk_ids = [judgment.chunk_id for judgment in self.judgments]
+        if len(chunk_ids) != len(set(chunk_ids)):
+            raise ValueError("evaluation case contains duplicate chunk judgments")
+        if chunk_ids != sorted(chunk_ids):
+            raise ValueError("evaluation judgments must be sorted by chunk ID")
+        return self
+
+
+class RetrievalMetricThresholds(ContractModel):
+    """Minimum accepted aggregate M8 retrieval quality."""
+
+    mean_recall_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    mean_reciprocal_rank_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    mean_ndcg_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+
+class RetrievalEvaluationDataset(ContractModel):
+    """Fixed independently reviewed M8 relevance dataset."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    dataset_version: str
+    repository_version: str
+    index_schema_version: str = Field(min_length=1)
+    embedding_model: str = Field(min_length=1)
+    authored_by: str = Field(min_length=1)
+    reviewed_by: str = Field(min_length=1)
+    reviewed_at: datetime
+    review_notes: str = Field(min_length=1)
+    thresholds: RetrievalMetricThresholds
+    cases: tuple[RetrievalEvaluationCase, ...] = Field(min_length=1)
+
+    @field_validator("dataset_version", "repository_version")
+    @classmethod
+    def evaluation_versions_are_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("evaluation dataset versions must be semantic")
+        return value
+
+    @field_validator("reviewed_at")
+    @classmethod
+    def review_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("evaluation review timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def review_and_cases_are_independent_and_unique(
+        self,
+    ) -> "RetrievalEvaluationDataset":
+        if self.authored_by == self.reviewed_by:
+            raise ValueError("evaluation author and reviewer must be independent")
+        case_ids = [case.case_id for case in self.cases]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("evaluation dataset contains duplicate case IDs")
+        if case_ids != sorted(case_ids):
+            raise ValueError("evaluation cases must be sorted by case ID")
+        return self
+
+
+class RetrievalEvaluationHit(ContractModel):
+    """Trace of one ranked chunk returned during evaluation."""
+
+    rank: int = Field(ge=1)
+    chunk_id: str
+    point_id: UUID
+    score: float = Field(ge=-1, le=1, allow_inf_nan=False)
+    semantic_score: float = Field(ge=-1, le=1, allow_inf_nan=False)
+    lexical_match_ratio: float = Field(ge=0, le=1, allow_inf_nan=False)
+    judged_relevance: int = Field(default=0, ge=0, le=3)
+
+
+class RetrievalEvaluationCaseResult(ContractModel):
+    """Deterministic metrics and retrieval trace for one evaluation case."""
+
+    case_id: str
+    query: str
+    k: int = Field(ge=1, le=20)
+    hits: tuple[RetrievalEvaluationHit, ...]
+    relevant_retrieved_chunk_ids: tuple[str, ...]
+    recall_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    reciprocal_rank_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    ndcg_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+
+    @model_validator(mode="after")
+    def evaluation_result_rank_is_valid(self) -> "RetrievalEvaluationCaseResult":
+        if len(self.hits) > self.k:
+            raise ValueError("evaluation hits cannot exceed k")
+        if tuple(hit.rank for hit in self.hits) != tuple(range(1, len(self.hits) + 1)):
+            raise ValueError("evaluation hit ranks must be contiguous")
+        chunk_ids = [hit.chunk_id for hit in self.hits]
+        if len(chunk_ids) != len(set(chunk_ids)):
+            raise ValueError("evaluation hits must have unique chunk IDs")
+        return self
+
+
+class RetrievalEvaluationReport(ContractModel):
+    """Versioned M8 retrieval quality result with exact traceability."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    evaluator_version: Literal["1.0"] = "1.0"
+    dataset_version: str
+    dataset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    repository_version: str
+    index_schema_version: Literal["2.0"] = "2.0"
+    embedding_model: Literal["sentence-transformers/all-MiniLM-L6-v2"] = (
+        "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    evaluated_at: datetime
+    thresholds: RetrievalMetricThresholds
+    cases: tuple[RetrievalEvaluationCaseResult, ...] = Field(min_length=1)
+    mean_recall_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    mean_reciprocal_rank_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    mean_ndcg_at_k: float = Field(ge=0, le=1, allow_inf_nan=False)
+    passed: bool
+
+    @field_validator("dataset_version", "repository_version")
+    @classmethod
+    def evaluation_report_versions_are_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("evaluation report versions must be semantic")
+        return value
+
+    @field_validator("evaluated_at")
+    @classmethod
+    def evaluation_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("evaluation timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def evaluation_report_is_consistent(self) -> "RetrievalEvaluationReport":
+        case_ids = [case.case_id for case in self.cases]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("evaluation report contains duplicate cases")
+        expected_pass = (
+            self.mean_recall_at_k >= self.thresholds.mean_recall_at_k
+            and self.mean_reciprocal_rank_at_k
+            >= self.thresholds.mean_reciprocal_rank_at_k
+            and self.mean_ndcg_at_k >= self.thresholds.mean_ndcg_at_k
+        )
+        if self.passed != expected_pass:
+            raise ValueError("evaluation pass status does not match its metrics")
         return self

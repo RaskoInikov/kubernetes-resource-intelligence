@@ -314,3 +314,38 @@ python scripts/verify_m7_qdrant.py \
   --url http://127.0.0.1:16333 \
   --collection kri_m7_verify_20261101
 ```
+
+## M8 analysis-grounded operational evidence
+
+`AnalysisEvidenceRetriever` consumes a validated M5 report without changing its
+statistics or recommendations. It queries once per recommendation, groups any
+remaining replica-level conditions by type, and returns exact verified chunks
+with links to the originating condition, statistic, and measurement-evidence
+IDs. Retrieval classifies reference, runbook, and incident intent, then applies
+a fixed 85% semantic/15% exact-term rerank over 20 scoped candidates. Both score
+components are retained.
+
+```python
+from kri.rag import (
+    AnalysisEvidenceRetriever,
+    RetrievalEvaluator,
+    load_evaluation_dataset,
+)
+
+evidence = AnalysisEvidenceRetriever(api).retrieve(analysis_report)
+dataset = load_evaluation_dataset(Path("evaluation/m8-retrieval-v1.json"))
+evaluation = RetrievalEvaluator(api).evaluate(dataset)
+```
+
+The fixed dataset has six independently reviewed graded cases spanning CPU,
+memory, missing metrics, and historical incidents. Evaluation records its
+canonical digest, exact ranked hits, Recall@5, MRR@5, nDCG@5, thresholds, and an
+explicit pass/fail result. Offline tests use deterministic doubles. The opt-in
+real verifier mutates only its named isolated Qdrant collection:
+
+```bash
+python scripts/verify_m8_retrieval.py \
+  --url http://127.0.0.1:16334 \
+  --collection kri_m8_verify_20261101 \
+  --analysis results/analysis/analysis-m3-verify-20261031.json
+```

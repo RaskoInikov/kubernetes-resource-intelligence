@@ -213,6 +213,33 @@ M11 — React two-panel interface.
   malformed payloads/responses, and transport failures without external
   services.
 
+## M8 Acceptance Criteria
+
+- Retrieval accepts a fully validated deterministic M5 analysis and never
+  recalculates statistics, conditions, or recommendations.
+- Every recommendation produces one deterministic operational query; detected
+  condition types not represented by recommendations also produce grouped
+  queries without duplicate per-Pod retrieval.
+- Every evidence bundle retains the originating analysis/observation, condition,
+  statistic, and analysis-evidence IDs plus the exact verified M7 chunks,
+  scores, text digests, and source provenance.
+- Operational retrieval uses deterministic query-intent document scoping and a
+  fixed semantic/lexical rerank while retaining both component scores.
+- Insufficient or finding-free analyses return an explicit empty package;
+  missing Qdrant results remain empty and are not fabricated or replaced.
+- A fixed semantic-versioned dataset contains independently reviewed, graded
+  chunk judgments spanning CPU, memory, metric-quality, and historical-incident
+  retrieval. Author and reviewer identities must be distinct.
+- Evaluation validates dataset/repository/index/model compatibility and records
+  a canonical dataset SHA-256 digest and exact returned IDs/scores.
+- Per-case and aggregate Recall@k, MRR@k, and nDCG@k are calculated
+  deterministically against explicit minimum thresholds; a failed threshold is
+  reported as a failed evaluation rather than raised or suppressed.
+- Offline tests inject deterministic retrieval responses and cover query
+  construction, traceability, empty/missing results, malformed analyses and
+  datasets, metric boundaries, compatibility failures, and evaluation pass/fail
+  behavior without model downloads, Qdrant, Kubernetes, or Prometheus.
+
 ## Completion Rules
 
 Each milestone must:
