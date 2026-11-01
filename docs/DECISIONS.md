@@ -54,3 +54,11 @@ Coalesce repeated counter evaluations before calculating CPU peaks. Treat
 throttling at 50%, limit utilization at 100%, and request utilization at 150%
 as critical; lower detected values are warnings. Report finite-window,
 scrape-resolution, near-threshold, and recommendation-cap uncertainty.
+
+## D013 — Canonical Knowledge Format
+Store canonical M6 knowledge as human-readable Markdown registered by one
+versioned JSON manifest. The manifest, not a vector database, owns document
+identity, semantic version, verification status, provenance, relative path, and
+content digest. Reject checksum drift, unsafe or duplicate paths, unregistered
+Markdown, incomplete document-type coverage, and invalid verification metadata.
+Keep loading and inspection local and read-only; Qdrant indexing begins in M7.

@@ -1,0 +1,227 @@
+{
+  "schema_version": "1.0",
+  "repository_version": "1.0.0",
+  "released_at": "2026-11-01T12:00:00Z",
+  "documents": [
+    {
+      "document_id": "incident-m3-collector-boundaries",
+      "document_type": "historical_incident",
+      "title": "Incident: M3 Prometheus Boundary and Label Mismatch",
+      "version": "1.0.0",
+      "verification_status": "verified",
+      "verified_at": "2026-11-01T12:00:00Z",
+      "verified_by": "project-maintainers",
+      "tags": ["collector", "incident", "labels", "prometheus", "timestamps"],
+      "summary": "Real M3 verification exposed Prometheus boundary precision and workload-label assumptions.",
+      "sources": [
+        {
+          "source_id": "m3-progress-record",
+          "source_type": "project_documentation",
+          "title": "Project Progress: M3 real-service verification",
+          "publisher": "Kubernetes Resource Intelligence",
+          "uri": "repo://docs/PROGRESS.md",
+          "version": "repository state 2026-11-01",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Records the real collector counts, timestamps, five controlled errors, defects, and cleanup."
+        },
+        {
+          "source_id": "m3-collector-contract",
+          "source_type": "project_documentation",
+          "title": "Data Contracts: RawMetricsSnapshot",
+          "publisher": "Kubernetes Resource Intelligence",
+          "uri": "repo://docs/CONTRACTS.md",
+          "version": "repository state 2026-11-01",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Defines millisecond boundary precision, explicit identity, and missing-data behavior."
+        }
+      ],
+      "path": "documents/incident-m3-collector-boundaries.md",
+      "content_sha256": "70010338b226fc6bc90caa2bd0d0ab470c472e49866a528f2fbb01744a3146b3"
+    },
+    {
+      "document_id": "incident-m5-counter-cadence",
+      "document_type": "historical_incident",
+      "title": "Incident: M5 Counter Cadence Inflated CPU Peaks",
+      "version": "1.0.0",
+      "verification_status": "verified",
+      "verified_at": "2026-11-01T12:00:00Z",
+      "verified_by": "project-maintainers",
+      "tags": ["cpu", "incident", "prometheus", "sampling", "throttling"],
+      "summary": "A real saved observation exposed CPU peak inflation when query steps were finer than scrape cadence.",
+      "sources": [
+        {
+          "source_id": "m5-progress-record",
+          "source_type": "project_documentation",
+          "title": "Project Progress: M5 real-artifact review",
+          "publisher": "Kubernetes Resource Intelligence",
+          "uri": "repo://docs/PROGRESS.md",
+          "version": "repository state 2026-11-01",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Records original and corrected CPU peaks, policy version, recommendation change, and verification."
+        },
+        {
+          "source_id": "m5-analysis-contract",
+          "source_type": "project_documentation",
+          "title": "Data Contracts: AnalysisReport",
+          "publisher": "Kubernetes Resource Intelligence",
+          "uri": "repo://docs/CONTRACTS.md",
+          "version": "policy 1.1",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Defines cadence-aware CPU peaks, thresholds, severity, and uncertainty reporting."
+        }
+      ],
+      "path": "documents/incident-m5-counter-cadence.md",
+      "content_sha256": "51c6799f1fbc7cea5325ddd979a6fb5eeb06200c7bc8bf0f0d5aba3da4f349bf"
+    },
+    {
+      "document_id": "kubernetes-resource-metrics",
+      "document_type": "kubernetes_documentation",
+      "title": "Kubernetes Resource Metrics and Evidence Scope",
+      "version": "1.0.0",
+      "verification_status": "verified",
+      "verified_at": "2026-11-01T12:00:00Z",
+      "verified_by": "project-maintainers",
+      "tags": ["cadvisor", "evidence", "kubelet", "metrics", "prometheus"],
+      "summary": "Canonical interpretation rules for Kubernetes resource counters, gauges, identity, and missing data.",
+      "sources": [
+        {
+          "source_id": "kubernetes-system-metrics",
+          "source_type": "official_documentation",
+          "title": "Metrics For Kubernetes System Components",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/concepts/cluster-administration/system-metrics/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Confirms kubelet metrics endpoints, Prometheus exposition, and cAdvisor resource metrics."
+        },
+        {
+          "source_id": "kubernetes-observability",
+          "source_type": "official_documentation",
+          "title": "Observability",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/concepts/cluster-administration/observability/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Distinguishes the resource Metrics API from a full monitoring pipeline."
+        }
+      ],
+      "path": "documents/kubernetes-resource-metrics.md",
+      "content_sha256": "c42251193884613d3f8bb930ccdb790fd38ebb37682bd932dd13d0aa67cb3a32"
+    },
+    {
+      "document_id": "kubernetes-resource-requests-and-limits",
+      "document_type": "kubernetes_documentation",
+      "title": "Kubernetes Resource Requests and Limits",
+      "version": "1.0.0",
+      "verification_status": "verified",
+      "verified_at": "2026-11-01T12:00:00Z",
+      "verified_by": "project-maintainers",
+      "tags": ["cpu", "kubernetes", "limits", "memory", "requests", "scheduling"],
+      "summary": "Canonical distinction between Kubernetes scheduling requests and runtime CPU and memory limits.",
+      "sources": [
+        {
+          "source_id": "kubernetes-resource-management",
+          "source_type": "official_documentation",
+          "title": "Resource Management for Pods and Containers",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Primary source for scheduling requests, cgroup limit enforcement, units, throttling, and OOM behavior."
+        },
+        {
+          "source_id": "kubernetes-cpu-assignment",
+          "source_type": "official_documentation",
+          "title": "Assign CPU Resources to Containers and Pods",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-cpu-resource/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Task documentation corroborating CPU request and limit configuration behavior."
+        },
+        {
+          "source_id": "kubernetes-memory-assignment",
+          "source_type": "official_documentation",
+          "title": "Assign Memory Resources to Containers and Pods",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/tasks/configure-pod-container/assign-memory-resource/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Task documentation corroborating memory request, limit, and OOM behavior."
+        }
+      ],
+      "path": "documents/kubernetes-resource-requests-and-limits.md",
+      "content_sha256": "f14c611f2426a6bb83b9da7b99e3ace2c0d122671fdc0b40f39f3ad7c0ce04f1"
+    },
+    {
+      "document_id": "runbook-cpu-throttling",
+      "document_type": "diagnostic_runbook",
+      "title": "Runbook: Diagnose CPU Throttling",
+      "version": "1.0.0",
+      "verification_status": "verified",
+      "verified_at": "2026-11-01T12:00:00Z",
+      "verified_by": "project-maintainers",
+      "tags": ["cpu", "diagnosis", "runbook", "throttling", "verification"],
+      "summary": "Evidence requirements, diagnostic steps, interpretation, and post-change verification for CPU throttling.",
+      "sources": [
+        {
+          "source_id": "runbook-kubernetes-resources",
+          "source_type": "official_documentation",
+          "title": "Resource Management for Pods and Containers",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Supports the distinction between CPU scheduling requests and enforced limits."
+        },
+        {
+          "source_id": "runbook-analysis-policy",
+          "source_type": "project_documentation",
+          "title": "D012 Deterministic Analysis Policy",
+          "publisher": "Kubernetes Resource Intelligence",
+          "uri": "repo://docs/DECISIONS.md",
+          "version": "policy 1.1",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Defines project thresholds, cadence handling, bounded recommendations, and uncertainty."
+        }
+      ],
+      "path": "documents/runbook-cpu-throttling.md",
+      "content_sha256": "52faca293ab0cc3052786491d17e8f0cb462e2e9e81afb16e0a8159f74531c00"
+    },
+    {
+      "document_id": "runbook-memory-sizing",
+      "document_type": "diagnostic_runbook",
+      "title": "Runbook: Diagnose Memory Requests and Limits",
+      "version": "1.0.0",
+      "verification_status": "verified",
+      "verified_at": "2026-11-01T12:00:00Z",
+      "verified_by": "project-maintainers",
+      "tags": ["diagnosis", "memory", "oom", "requests", "runbook", "verification"],
+      "summary": "Evidence requirements and safe interpretation for memory request mismatch and limit pressure.",
+      "sources": [
+        {
+          "source_id": "memory-kubernetes-resources",
+          "source_type": "official_documentation",
+          "title": "Resource Management for Pods and Containers",
+          "publisher": "Kubernetes Authors",
+          "uri": "https://kubernetes.io/docs/concepts/configuration/manage-resources-containers/",
+          "version": "Kubernetes 1.37 documentation",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Supports scheduling-request and reactive memory-limit behavior."
+        },
+        {
+          "source_id": "memory-analysis-policy",
+          "source_type": "project_documentation",
+          "title": "D012 Deterministic Analysis Policy",
+          "publisher": "Kubernetes Resource Intelligence",
+          "uri": "repo://docs/DECISIONS.md",
+          "version": "policy 1.1",
+          "accessed_at": "2026-11-01T12:00:00Z",
+          "verification_notes": "Defines memory thresholds, evidence separation, bounded increases, and uncertainty."
+        }
+      ],
+      "path": "documents/runbook-memory-sizing.md",
+      "content_sha256": "191a7954a8859b98978b89f025ff191991f8c390d4cd35a990c64163bf8e3c39"
+    }
+  ]
+}

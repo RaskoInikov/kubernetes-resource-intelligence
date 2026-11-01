@@ -123,10 +123,27 @@ targets constrained by current limits. Recommendations also state that their
 effects remain unvalidated until an approved post-change experiment.
 
 ## KnowledgeDocument
-- Document ID and type
-- Source and version
-- Verification status
-- Content and metadata
+- Schema version, DNS-safe document ID, type, title, and semantic version
+- Type: `kubernetes_documentation`, `diagnostic_runbook`, or
+  `historical_incident`
+- Verification status: `verified`, `needs_review`, or `deprecated`
+- Verifier identity and UTC verification timestamp for verified documents
+- Stable unique tags, concise summary, and complete Markdown content
+- One or more explicit provenance records containing source ID/type, title,
+  publisher, URI, source version, UTC access time, and verification notes
+
+## KnowledgeRepositoryManifest
+- Schema version, semantic repository version, and UTC release timestamp
+- Deterministically ordered document entries containing all KnowledgeDocument
+  metadata plus a repository-relative Markdown path and SHA-256 content digest
+- Unique document IDs, paths, source IDs, and tags
+- At least one registered document of every required M6 type
+
+The M6 repository accepts only paths contained beneath its configured root,
+requires `.md` files with a matching top-level title, validates exact content
+digests, rejects unregistered Markdown, and never edits source documents while
+loading or inspecting them. A `verified` entry must name its verifier and UTC
+verification time. `needs_review` material cannot claim verification metadata.
 
 ## EvidenceBundle
 - Retrieval query
@@ -150,3 +167,5 @@ effects remain unvalidated until an approved post-change experiment.
 - Never mix aggregate usage with per-container limits.
 - Preserve historical workload identities.
 - Never promote unverified LLM results to confirmed knowledge.
+- Never treat an unregistered, checksum-invalid, or `needs_review` knowledge
+  document as canonical verified evidence.

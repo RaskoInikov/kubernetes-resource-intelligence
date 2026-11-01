@@ -4,6 +4,7 @@ import re
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
+from pathlib import PurePosixPath
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
@@ -14,6 +15,8 @@ MEMORY_PATTERN = re.compile(r"^(?P<value>[1-9][0-9]*)(?P<unit>Ki|Mi|Gi)$")
 MEMORY_FACTORS = {"Ki": 1024, "Mi": 1024**2, "Gi": 1024**3}
 EXPERIMENT_ID_PATTERN = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,46}[a-z0-9])?$")
 OBSERVATION_ID_PATTERN = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+SEMANTIC_VERSION_PATTERN = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
+KNOWLEDGE_TAG_PATTERN = re.compile(r"^[a-z0-9]+(?:[-_][a-z0-9]+)*$")
 
 
 def _cpu_cores(quantity: str) -> Decimal:
@@ -562,3 +565,222 @@ class AnalysisReport(ContractModel):
         ):
             raise ValueError("insufficient analysis cannot contain recommendations")
         return self
+
+
+class KnowledgeDocumentType(StrEnum):
+    """Canonical M6 knowledge categories."""
+
+    KUBERNETES_DOCUMENTATION = "kubernetes_documentation"
+    DIAGNOSTIC_RUNBOOK = "diagnostic_runbook"
+    HISTORICAL_INCIDENT = "historical_incident"
+
+
+class KnowledgeVerificationStatus(StrEnum):
+    """Review state carried into later retrieval payloads."""
+
+    VERIFIED = "verified"
+    NEEDS_REVIEW = "needs_review"
+    DEPRECATED = "deprecated"
+
+
+class KnowledgeSourceType(StrEnum):
+    """Origin of a claim in a canonical knowledge document."""
+
+    OFFICIAL_DOCUMENTATION = "official_documentation"
+    PROJECT_DOCUMENTATION = "project_documentation"
+    PROJECT_ARTIFACT = "project_artifact"
+
+
+class KnowledgeSource(ContractModel):
+    """Explicit provenance for one knowledge document source."""
+
+    source_id: str
+    source_type: KnowledgeSourceType
+    title: str = Field(min_length=1)
+    publisher: str = Field(min_length=1)
+    uri: str = Field(min_length=1)
+    version: str = Field(min_length=1)
+    accessed_at: datetime
+    verification_notes: str = Field(min_length=1)
+
+    @field_validator("source_id")
+    @classmethod
+    def source_id_is_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("knowledge source ID must be a lowercase DNS label")
+        return value
+
+    @field_validator("uri")
+    @classmethod
+    def uri_is_explicit(cls, value: str) -> str:
+        if not value.startswith(("https://", "repo://")) or any(
+            character.isspace() for character in value
+        ):
+            raise ValueError("knowledge source URI must use https:// or repo://")
+        return value
+
+    @field_validator("accessed_at")
+    @classmethod
+    def accessed_at_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("knowledge source access time must include a timezone")
+        return value.astimezone(UTC)
+
+
+class KnowledgeManifestEntry(ContractModel):
+    """Manifest-owned metadata and integrity information for one document."""
+
+    document_id: str
+    document_type: KnowledgeDocumentType
+    title: str = Field(min_length=1)
+    version: str
+    verification_status: KnowledgeVerificationStatus
+    verified_at: datetime | None = None
+    verified_by: str | None = Field(default=None, min_length=1)
+    tags: tuple[str, ...] = Field(min_length=1)
+    summary: str = Field(min_length=1)
+    sources: tuple[KnowledgeSource, ...] = Field(min_length=1)
+    path: str = Field(min_length=1)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+    @field_validator("document_id")
+    @classmethod
+    def document_id_is_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("knowledge document ID must be a lowercase DNS label")
+        return value
+
+    @field_validator("version")
+    @classmethod
+    def version_is_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("knowledge document version must be semantic")
+        return value
+
+    @field_validator("verified_at")
+    @classmethod
+    def verified_at_is_utc(cls, value: datetime | None) -> datetime | None:
+        if value is not None:
+            if value.tzinfo is None:
+                raise ValueError("knowledge verification time must include a timezone")
+            return value.astimezone(UTC)
+        return value
+
+    @field_validator("tags")
+    @classmethod
+    def tags_are_stable(cls, value: tuple[str, ...]) -> tuple[str, ...]:
+        if len(value) != len(set(value)):
+            raise ValueError("knowledge tags must be unique")
+        if value != tuple(sorted(value)):
+            raise ValueError("knowledge tags must be sorted")
+        if any(KNOWLEDGE_TAG_PATTERN.fullmatch(tag) is None for tag in value):
+            raise ValueError("knowledge tags must use lowercase stable names")
+        return value
+
+    @field_validator("path")
+    @classmethod
+    def path_is_safe_markdown(cls, value: str) -> str:
+        path = PurePosixPath(value)
+        if (
+            path.is_absolute()
+            or ".." in path.parts
+            or "\\" in value
+            or path.suffix != ".md"
+        ):
+            raise ValueError("knowledge path must be a safe relative Markdown path")
+        return value
+
+    @model_validator(mode="after")
+    def verification_and_provenance_are_consistent(self) -> "KnowledgeManifestEntry":
+        if self.verification_status is KnowledgeVerificationStatus.VERIFIED:
+            if self.verified_at is None or self.verified_by is None:
+                raise ValueError("verified knowledge requires verifier metadata")
+        elif self.verification_status is KnowledgeVerificationStatus.NEEDS_REVIEW and (
+            self.verified_at is not None or self.verified_by is not None
+        ):
+            raise ValueError("needs-review knowledge cannot claim verification")
+        source_ids = [source.source_id for source in self.sources]
+        if len(source_ids) != len(set(source_ids)):
+            raise ValueError("knowledge source IDs must be unique per document")
+        if (
+            self.document_type is KnowledgeDocumentType.KUBERNETES_DOCUMENTATION
+            and not any(
+                source.source_type is KnowledgeSourceType.OFFICIAL_DOCUMENTATION
+                for source in self.sources
+            )
+        ):
+            raise ValueError("Kubernetes documentation requires an official source")
+        if self.document_type is KnowledgeDocumentType.HISTORICAL_INCIDENT and not any(
+            source.source_type
+            in {
+                KnowledgeSourceType.PROJECT_ARTIFACT,
+                KnowledgeSourceType.PROJECT_DOCUMENTATION,
+            }
+            for source in self.sources
+        ):
+            raise ValueError("historical incidents require project provenance")
+        return self
+
+
+class KnowledgeRepositoryManifest(ContractModel):
+    """Versioned registry for all canonical M6 knowledge."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    repository_version: str
+    released_at: datetime
+    documents: tuple[KnowledgeManifestEntry, ...] = Field(min_length=1)
+
+    @field_validator("repository_version")
+    @classmethod
+    def repository_version_is_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("knowledge repository version must be semantic")
+        return value
+
+    @field_validator("released_at")
+    @classmethod
+    def released_at_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("knowledge release time must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def registry_is_complete_and_unique(self) -> "KnowledgeRepositoryManifest":
+        document_ids = [document.document_id for document in self.documents]
+        paths = [document.path for document in self.documents]
+        if document_ids != sorted(document_ids):
+            raise ValueError("knowledge documents must be sorted by document ID")
+        if len(document_ids) != len(set(document_ids)):
+            raise ValueError("knowledge document IDs must be unique")
+        if len(paths) != len(set(paths)):
+            raise ValueError("knowledge document paths must be unique")
+        if {document.document_type for document in self.documents} != set(
+            KnowledgeDocumentType
+        ):
+            raise ValueError("knowledge manifest must cover every document type")
+        return self
+
+
+class KnowledgeDocument(KnowledgeManifestEntry):
+    """Validated canonical metadata plus exact Markdown content."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    content: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def heading_matches_title(self) -> "KnowledgeDocument":
+        if self.content.splitlines()[0] != f"# {self.title}":
+            raise ValueError("knowledge Markdown heading must match its title")
+        return self
+
+
+class KnowledgeDocumentSummary(ContractModel):
+    """Bounded metadata returned by repository inspection."""
+
+    document_id: str
+    document_type: KnowledgeDocumentType
+    title: str
+    version: str
+    verification_status: KnowledgeVerificationStatus
+    tags: tuple[str, ...]
+    source_count: int = Field(ge=1)

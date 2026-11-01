@@ -158,6 +158,31 @@ M11 — React two-panel interface.
   rounding/caps, evidence traceability, deterministic saved-observation input,
   and malformed analysis contracts without external services.
 
+## M6 Acceptance Criteria
+
+- Canonical knowledge is stored as readable Markdown plus a versioned JSON
+  manifest; generated embeddings and vector-database state are not canonical.
+- The repository contains Kubernetes documentation, diagnostic runbooks, and
+  historical incidents, with at least two documents of each type.
+- Every document has a safe stable ID, semantic version, unique tags, concise
+  summary, explicit verification status, and one or more source-provenance
+  records with URI, publisher, source version, UTC access time, and notes.
+- Verified documents identify the verifier and UTC verification time;
+  unverified material cannot silently claim verified metadata.
+- Manifest paths are repository-relative and contained beneath the knowledge
+  root. Exact SHA-256 content digests, matching Markdown titles, unique IDs and
+  paths, complete type coverage, and absence of unregistered Markdown are
+  validated before documents are returned.
+- A read-only Python repository loads, lists, retrieves, and summarizes
+  documents deterministically and fails explicitly for missing, malformed,
+  unsafe, duplicate, checksum-invalid, or incomplete repositories.
+- Kubernetes reference material distinguishes scheduling requests from runtime
+  limits. Runbooks preserve missing-data uncertainty and require post-change
+  verification. Incidents distinguish recorded evidence from lessons learned.
+- Offline tests cover successful loading and inspection plus contract, path,
+  checksum, heading, registration, coverage, and verification failures without
+  Kubernetes, Prometheus, Qdrant, or network access.
+
 ## Completion Rules
 
 Each milestone must:

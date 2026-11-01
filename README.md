@@ -4,8 +4,8 @@ Kubernetes Resource Intelligence is an evidence-grounded resource analysis
 project. M1 provides a disposable application and independently controlled load;
 M2 adds Prometheus monitoring for container resources and HTTP behavior; M3
 adds identity-bound, read-only Kubernetes and Prometheus collectors; M4 creates
-replayable observations; and M5 produces deterministic, evidence-linked resource
-analysis and bounded recommendations.
+replayable observations; M5 produces deterministic, evidence-linked resource
+analysis and bounded recommendations; and M6 adds canonical verified knowledge.
 
 ## Requirements
 
@@ -54,7 +54,8 @@ separately, as required by `AGENTS.md`.
 - `tests/` — offline Python tests.
 - `deploy/workload/` — build context for the disposable target/load image.
 - `deploy/monitoring/` — disposable Prometheus resources and canonical PromQL.
-- `knowledge/` — future canonical knowledge documents.
+- `knowledge/` — canonical Markdown knowledge and its versioned integrity
+  manifest.
 - `results/` — generated experiment artifacts (ignored except `.gitkeep`).
 - `web/` — future frontend application.
 - `docs/` — product, architecture, contracts, roadmap, and progress.
@@ -230,3 +231,28 @@ configured limits where applicable, never exceed twice the current value, and
 always require explicit approval. Reports retain finite-window, scrape-cadence,
 near-threshold, and constrained-headroom uncertainty. M5 is read-only and
 performs no Kubernetes mutation.
+
+## M6 canonical knowledge
+
+`knowledge/manifest.json` registers the canonical Markdown corpus under
+`knowledge/documents/`. It contains two Kubernetes references, two diagnostic
+runbooks, and two historical project incidents. Every entry has a semantic
+version, verification state, verifier and UTC timestamp, tags, explicit source
+provenance, repository-relative path, and SHA-256 content digest.
+
+`KnowledgeRepository` is a local read-only API. It validates the whole manifest,
+safe path containment, exact checksums, matching top-level titles, complete type
+coverage, and absence of unregistered Markdown before returning documents.
+
+```python
+from pathlib import Path
+from kri.knowledge import KnowledgeRepository
+
+repository = KnowledgeRepository(Path("knowledge"))
+summaries = repository.inspect()
+runbook = repository.get("runbook-cpu-throttling")
+```
+
+M6 does not contact Kubernetes, Prometheus, Qdrant, or the network. Qdrant
+indexing, chunking, and retrieval are M7 concerns; generated vector state will
+not replace the manifest and Markdown as canonical knowledge.

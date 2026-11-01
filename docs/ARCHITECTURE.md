@@ -90,6 +90,17 @@ recommendation-constraint uncertainty.
 ### Knowledge Repository
 Maintains readable documentation, runbooks, and incidents.
 
+In M6 canonical knowledge is authored as Markdown under `knowledge/documents`
+and registered by a versioned JSON manifest. Manifest entries identify the
+document type, semantic version, verification status, verifier and UTC time,
+tags, explicit source provenance, repository-relative path, and SHA-256 content
+digest. The read-only Python repository validates the complete manifest,
+path containment, checksums, headings, type coverage, and absence of unregistered
+Markdown before returning deterministic document records.
+
+M6 does not crawl sources, generate embeddings, index Qdrant, rank passages, or
+silently promote unverified material. Those are later retrieval responsibilities.
+
 ### Qdrant Retriever
 Retrieves relevant knowledge with source references.
 

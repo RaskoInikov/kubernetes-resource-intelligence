@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M5 — Deterministic analyzer (complete, offline-verified)
+M6 — Canonical knowledge repository (complete, offline-verified)
 
 ## Completed
 - Git repository initialized.
@@ -55,11 +55,20 @@ M5 — Deterministic analyzer (complete, offline-verified)
 - Replay-validated deterministic analysis now calculates per-Pod/container CPU,
   throttling, and memory statistics and workload-level HTTP throughput, error,
   mean-latency, and histogram-p95 statistics without fabricating missing values.
-- Policy version 1.0 detects CPU throttling, CPU and memory limit pressure, and
+- Policy version 1.1 detects CPU throttling, CPU and memory limit pressure, and
   request mismatch at documented inclusive thresholds with exact evidence links.
 - Recommendations are increase-only, Kubernetes-unit rounded, capped at twice
   current resources and applicable configured limits, and explicitly require
   approval. Insufficient evidence suppresses conditions and recommendations.
+- Canonical M6 knowledge now contains two Kubernetes references, two diagnostic
+  runbooks, and two historical project incidents as readable Markdown.
+- A semantic-versioned JSON manifest records stable IDs, document versions,
+  verification state, verifier and UTC time, sorted tags, explicit source
+  provenance, repository-relative paths, and SHA-256 content digests.
+- The read-only knowledge repository validates manifest contracts, type
+  coverage, deterministic ordering, path containment, checksums, Markdown
+  titles, and registration completeness before loading, retrieval, or bounded
+  inspection.
 
 ## Verification
 
@@ -168,9 +177,17 @@ M5 — Deterministic analyzer (complete, offline-verified)
   recommendation rationale, and reports limits that prevent the intended 25%
   headroom. Full verification passed with 142 tests and 100% statement and
   branch coverage, plus Ruff and strict mypy.
+- M6 `make verify` passed in the project virtual environment on 2026-11-01 with
+  Ruff, strict mypy, and 170 offline pytest cases at 100% statement and branch
+  coverage.
+- M6 tests verify the canonical six-document corpus plus missing/malformed
+  manifests, unsafe or escaping paths, duplicate IDs and paths, checksum and
+  heading drift, invalid UTF-8, unregistered Markdown, incomplete type coverage,
+  invalid provenance, and inconsistent verification metadata. No external
+  service was contacted.
 
 ## Next
-M6 — Knowledge repository and retrieval.
+M7 — Qdrant indexing and knowledge inspection API.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
