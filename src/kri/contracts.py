@@ -1,11 +1,13 @@
 """Versioned workload, experiment, and raw observation contracts."""
 
+import hashlib
 import re
 from datetime import UTC, datetime
 from decimal import Decimal
 from enum import StrEnum
 from pathlib import PurePosixPath
 from typing import Literal
+from uuid import UUID
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
@@ -784,3 +786,152 @@ class KnowledgeDocumentSummary(ContractModel):
     verification_status: KnowledgeVerificationStatus
     tags: tuple[str, ...]
     source_count: int = Field(ge=1)
+
+
+class KnowledgeChunk(ContractModel):
+    """One deterministic, provenance-complete M7 indexing unit."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    chunk_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    point_id: UUID
+    repository_version: str
+    document_id: str
+    document_type: KnowledgeDocumentType
+    document_title: str = Field(min_length=1)
+    document_version: str
+    verification_status: KnowledgeVerificationStatus
+    tags: tuple[str, ...] = Field(min_length=1)
+    sources: tuple[KnowledgeSource, ...] = Field(min_length=1)
+    section: str = Field(min_length=1)
+    ordinal: int = Field(ge=0)
+    text: str = Field(min_length=1)
+    content_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    chunker_version: Literal["1.0"] = "1.0"
+    embedder_version: Literal["2.0"] = "2.0"
+    embedding_model: Literal["sentence-transformers/all-MiniLM-L6-v2"] = (
+        "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    vector_dimension: Literal[384] = 384
+
+    @field_validator("repository_version", "document_version")
+    @classmethod
+    def knowledge_versions_are_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("knowledge chunk versions must be semantic")
+        return value
+
+    @field_validator("document_id")
+    @classmethod
+    def chunk_document_id_is_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("chunk document ID must be a lowercase DNS label")
+        return value
+
+    @model_validator(mode="after")
+    def text_digest_matches(self) -> "KnowledgeChunk":
+        digest = hashlib.sha256(self.text.encode()).hexdigest()
+        if digest != self.content_sha256:
+            raise ValueError("knowledge chunk text digest does not match")
+        return self
+
+
+class KnowledgeIndexSummary(ContractModel):
+    """Result of an explicit M7 derived-index synchronization."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    collection_name: str = Field(min_length=1)
+    repository_version: str
+    index_schema_version: Literal["2.0"] = "2.0"
+    chunker_version: Literal["1.0"] = "1.0"
+    embedder_version: Literal["2.0"] = "2.0"
+    embedding_model: Literal["sentence-transformers/all-MiniLM-L6-v2"] = (
+        "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    vector_dimension: Literal[384] = 384
+    distance: Literal["Cosine"] = "Cosine"
+    document_count: int = Field(ge=0)
+    chunk_count: int = Field(ge=0)
+    upserted_point_count: int = Field(ge=0)
+    deleted_stale_point_count: int = Field(ge=0)
+
+    @field_validator("repository_version")
+    @classmethod
+    def index_repository_version_is_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("index repository version must be semantic")
+        return value
+
+
+class KnowledgeIndexStatus(ContractModel):
+    """Read-only collection metadata exposed by the M7 inspection API."""
+
+    collection_name: str = Field(min_length=1)
+    exists: bool
+    vector_dimension: int | None = Field(default=None, gt=0)
+    distance: str | None = None
+    point_count: int | None = Field(default=None, ge=0)
+
+    @model_validator(mode="after")
+    def absent_collection_has_no_schema(self) -> "KnowledgeIndexStatus":
+        metadata = (self.vector_dimension, self.distance, self.point_count)
+        if self.exists and any(value is None for value in metadata):
+            raise ValueError("existing index status requires collection metadata")
+        if not self.exists and any(value is not None for value in metadata):
+            raise ValueError("absent index status cannot contain collection metadata")
+        return self
+
+
+class KnowledgeRetrievalHit(ContractModel):
+    """One validated verified-knowledge result from Qdrant."""
+
+    score: float = Field(ge=-1, le=1, allow_inf_nan=False)
+    chunk: KnowledgeChunk
+
+    @model_validator(mode="after")
+    def retrieved_chunk_is_verified(self) -> "KnowledgeRetrievalHit":
+        if self.chunk.verification_status is not KnowledgeVerificationStatus.VERIFIED:
+            raise ValueError("retrieval hits must be verified knowledge")
+        return self
+
+
+class KnowledgeRetrievalResult(ContractModel):
+    """Bounded ordered M7 retrieval result with exact evidence payloads."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    query: str = Field(min_length=1)
+    limit: int = Field(ge=1, le=20)
+    collection_name: str = Field(min_length=1)
+    repository_version: str
+    index_schema_version: Literal["2.0"] = "2.0"
+    embedder_version: Literal["2.0"] = "2.0"
+    embedding_model: Literal["sentence-transformers/all-MiniLM-L6-v2"] = (
+        "sentence-transformers/all-MiniLM-L6-v2"
+    )
+    hits: tuple[KnowledgeRetrievalHit, ...]
+
+    @field_validator("query")
+    @classmethod
+    def query_is_not_whitespace(cls, value: str) -> str:
+        stripped = value.strip()
+        if not stripped:
+            raise ValueError("retrieval query must not be blank")
+        return stripped
+
+    @field_validator("repository_version")
+    @classmethod
+    def retrieval_repository_version_is_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("retrieval repository version must be semantic")
+        return value
+
+    @model_validator(mode="after")
+    def hits_are_ordered_and_unique(self) -> "KnowledgeRetrievalResult":
+        scores = [hit.score for hit in self.hits]
+        if scores != sorted(scores, reverse=True):
+            raise ValueError("retrieval hits must be ordered by descending score")
+        point_ids = [hit.chunk.point_id for hit in self.hits]
+        if len(point_ids) != len(set(point_ids)):
+            raise ValueError("retrieval hits must have unique point IDs")
+        if len(self.hits) > self.limit:
+            raise ValueError("retrieval hits cannot exceed the requested limit")
+        return self

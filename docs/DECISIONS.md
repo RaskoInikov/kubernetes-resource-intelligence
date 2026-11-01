@@ -62,3 +62,21 @@ identity, semantic version, verification status, provenance, relative path, and
 content digest. Reject checksum drift, unsafe or duplicate paths, unregistered
 Markdown, incomplete document-type coverage, and invalid verification metadata.
 Keep loading and inspection local and read-only; Qdrant indexing begins in M7.
+
+## D014 — Derived Qdrant Knowledge Index
+Use one configured project collection with cosine vectors from a deterministic,
+versioned local feature-hashing embedder. Chunk canonical Markdown by section
+with stable bounded chunks and deterministic UUID point IDs. Store complete
+document, verification, source, chunk, repository, and implementation metadata
+in every payload. Synchronize only project-owned points and fail on incompatible
+collection schema instead of recreating it. Default retrieval to verified
+documents. Treat Qdrant as rebuildable derived state; M6 files remain canonical.
+
+## D015 — Pretrained Semantic Embeddings
+Supersede D014's local feature hashing with the Apache-2.0
+`sentence-transformers/all-MiniLM-L6-v2` model executed locally through
+FastEmbed. Use its 384-dimensional normalized dense vectors for both indexing
+and queries, record the exact model name and embedder version in derived
+payloads, and bump the incompatible Qdrant index schema to 2.0. Keep offline
+tests deterministic and network-free by injecting a model double through the
+same validated embedding boundary.

@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M6 — Canonical knowledge repository (complete, offline-verified)
+M7 — Qdrant indexing and knowledge inspection API (complete, offline-verified)
 
 ## Completed
 - Git repository initialized.
@@ -69,6 +69,19 @@ M6 — Canonical knowledge repository (complete, offline-verified)
   coverage, deterministic ordering, path containment, checksums, Markdown
   titles, and registration completeness before loading, retrieval, or bounded
   inspection.
+- A versioned deterministic Markdown chunker produces stable, bounded chunks
+  with UUID point IDs, exact text digests, document metadata, verification
+  state, and source provenance.
+- Production indexing and retrieval share the local pretrained
+  `sentence-transformers/all-MiniLM-L6-v2` model through FastEmbed and validate
+  its normalized 384-dimensional cosine vectors. Offline tests inject a
+  deterministic model double and never download weights.
+- Explicit Qdrant synchronization creates or validates only the configured
+  collection, upserts current derived points, and deletes only stale points
+  bearing the project ownership marker.
+- A read-only Python inspection API lists canonical documents, reports index
+  metadata, inspects bounded document-scoped chunks, resolves exact chunks, and
+  returns bounded verified-only retrieval results with validated payloads.
 
 ## Verification
 
@@ -185,12 +198,37 @@ M6 — Canonical knowledge repository (complete, offline-verified)
   heading drift, invalid UTF-8, unregistered Markdown, incomplete type coverage,
   invalid provenance, and inconsistent verification metadata. No external
   service was contacted.
+- M7 `make verify` passed in the project virtual environment on 2026-11-01 with
+  Ruff, strict mypy, and 212 offline pytest cases at 100% statement and branch
+  coverage.
+- M7 tests cover deterministic chunking and embeddings, collection creation and
+  schema rejection, idempotent synchronization, stale-owned deletion without
+  foreign deletion, pagination, inspection and retrieval filters, exact payload
+  validation, malformed Qdrant responses, and transport failures. No external
+  service is contacted by the offline suite.
+- Real M7 verification passed on 2026-11-01 against an isolated Qdrant 1.19.1
+  container using image digest `sha256:12364fe851b...`, a tmpfs data directory,
+  localhost port 16333, and collection `kri_m7_verify_20261101`.
+- The real MiniLM model indexed all six canonical documents as 26
+  384-dimensional cosine points. Direct Qdrant inspection confirmed the 2.0
+  ownership/schema payload, exact model name, provenance, text digest, and
+  green collection state.
+- A second synchronization retained the same 26 point UUIDs, created no extra
+  points, and deleted no stale points. Document and chunk inspection returned
+  six documents and 26 validated chunks.
+- The CPU-limit query ranked the canonical Kubernetes requests-and-limits
+  behavior first with score 0.7911. The memory-working-set query ranked the
+  memory-sizing procedure first with score 0.5240. All returned hits retained
+  verified status and source provenance.
+- The isolated container and its tmpfs storage were removed after verification;
+  only the downloaded MiniLM model cache remains locally.
 
 ## Next
-M7 — Qdrant indexing and knowledge inspection API.
+M8 — RAG retrieval and evaluation.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- Knowledge retrieval, API, and frontend are not implemented yet.
+- RAG evaluation, LLM input construction, FastAPI integration, and the frontend
+  are not implemented yet. M7 exposes a local Python inspection API only.

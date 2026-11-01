@@ -5,7 +5,9 @@ project. M1 provides a disposable application and independently controlled load;
 M2 adds Prometheus monitoring for container resources and HTTP behavior; M3
 adds identity-bound, read-only Kubernetes and Prometheus collectors; M4 creates
 replayable observations; M5 produces deterministic, evidence-linked resource
-analysis and bounded recommendations; and M6 adds canonical verified knowledge.
+analysis and bounded recommendations; M6 adds canonical verified knowledge; and
+M7 builds a derived Qdrant index with read-only knowledge inspection and
+retrieval.
 
 ## Requirements
 
@@ -210,7 +212,7 @@ replayed = store.replay(snapshot.observation_id)
 
 `DeterministicAnalyzer` accepts an M4 snapshot only after replay validation. It
 calculates per-Pod/container CPU, throttling, and memory statistics plus
-workload-level HTTP context, applies policy version `1.0`, and returns a
+workload-level HTTP context, applies policy version `1.1`, and returns a
 versioned `AnalysisReport`. Every finding and recommendation links back to exact
 normalized-series and workload-configuration evidence.
 
@@ -256,3 +258,59 @@ runbook = repository.get("runbook-cpu-throttling")
 M6 does not contact Kubernetes, Prometheus, Qdrant, or the network. Qdrant
 indexing, chunking, and retrieval are M7 concerns; generated vector state will
 not replace the manifest and Markdown as canonical knowledge.
+
+## M7 Qdrant knowledge index
+
+`KnowledgeIndexer` validates the complete M6 repository, creates or validates
+one configured cosine-vector collection, and synchronizes deterministic chunks.
+It upserts current points and deletes only stale points carrying the project
+ownership marker. Calling `sync()` mutates the configured Qdrant collection;
+it never modifies canonical Markdown or manifest metadata.
+
+```python
+from pathlib import Path
+
+from kri.config import load_settings
+from kri.knowledge import KnowledgeRepository
+from kri.knowledge_index import (
+    KnowledgeIndexer,
+    KnowledgeInspectionAPI,
+    QdrantHttpGateway,
+)
+
+settings = load_settings()
+repository = KnowledgeRepository(Path("knowledge"))
+gateway = QdrantHttpGateway(str(settings.qdrant_url))
+
+# Explicit derived-state mutation; run only when an index sync is intended.
+summary = KnowledgeIndexer(
+    repository, gateway, settings.qdrant_collection
+).sync()
+
+# These operations are read-only against both the repository and Qdrant.
+api = KnowledgeInspectionAPI(repository, gateway, settings.qdrant_collection)
+documents = api.documents()
+status = api.index_status()
+chunks = api.chunks(document_id="runbook-cpu-throttling", limit=20)
+chunk = api.chunk(chunks[0].chunk_id)
+results = api.retrieve("CPU throttling diagnosis", limit=5)
+```
+
+Production uses the small Apache-2.0
+`sentence-transformers/all-MiniLM-L6-v2` pretrained semantic model through
+FastEmbed. Model weights are downloaded into the local model cache on first use;
+subsequent inference is local. Retrieval is bounded to 20 results, filters to
+the current repository version and
+`verified` documents, and returns exact chunk text, digests, metadata, scores,
+and source provenance. M7 has no HTTP server; FastAPI integration remains M10.
+Offline verification uses a fake Qdrant gateway and does not contact or mutate
+an external Qdrant service.
+
+The opt-in verifier performs real model inference and mutates only its named
+Qdrant collection. Run it only against an explicitly isolated instance:
+
+```bash
+python scripts/verify_m7_qdrant.py \
+  --url http://127.0.0.1:16333 \
+  --collection kri_m7_verify_20261101
+```

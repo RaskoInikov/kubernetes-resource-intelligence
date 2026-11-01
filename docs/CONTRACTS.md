@@ -145,6 +145,37 @@ digests, rejects unregistered Markdown, and never edits source documents while
 loading or inspecting them. A `verified` entry must name its verifier and UTC
 verification time. `needs_review` material cannot claim verification metadata.
 
+## KnowledgeChunk
+- Schema version, deterministic chunk ID and Qdrant point UUID
+- Repository version, document ID/type/title/version, verification status, tags,
+  and source provenance
+- Section heading, zero-based ordinal, exact non-empty text, and SHA-256 digest
+- Chunker version, embedder version, exact pretrained model name, and fixed
+  vector dimension
+
+## KnowledgeIndexSummary
+- Collection name, repository version, index schema/chunker/embedder versions,
+  and exact pretrained model name
+- Vector dimension and distance metric
+- Canonical document count, generated chunk count, upserted point count, and
+  stale project-owned point deletion count
+
+## KnowledgeIndexStatus
+- Configured collection name and existence
+- Existing collection vector dimension, distance metric, and point count
+- No synthetic schema metadata when the collection is absent
+
+## KnowledgeRetrievalResult
+- Non-empty query and bounded result limit
+- Repository, collection, index schema, and embedder versions
+- Ordered hits with score, exact chunk identity/text/digest, document metadata,
+  verification status, tags, section, and source provenance
+
+M7 retrieval returns only `verified` documents unless a future explicit
+contract broadens that policy. Scores must be finite and non-increasing. Qdrant
+payloads are validated back into KnowledgeChunk contracts; malformed or foreign
+payloads never become retrieval evidence.
+
 ## EvidenceBundle
 - Retrieval query
 - Retrieved document/chunk IDs
@@ -169,3 +200,5 @@ verification time. `needs_review` material cannot claim verification metadata.
 - Never promote unverified LLM results to confirmed knowledge.
 - Never treat an unregistered, checksum-invalid, or `needs_review` knowledge
   document as canonical verified evidence.
+- Never treat Qdrant state as canonical, delete foreign points during sync, or
+  return unverified/malformed payloads as retrieved evidence.

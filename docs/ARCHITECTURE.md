@@ -104,6 +104,25 @@ silently promote unverified material. Those are later retrieval responsibilities
 ### Qdrant Retriever
 Retrieves relevant knowledge with source references.
 
+In M7 a deterministic Markdown chunker and a versioned local pretrained
+semantic embedder transform repository-validated M6 documents into derived
+Qdrant points. Production indexing and queries share FastEmbed's
+`sentence-transformers/all-MiniLM-L6-v2` model and its 384-dimensional vectors;
+offline tests inject a deterministic model double and never download weights.
+Point IDs are deterministic, and payloads retain repository/document versions,
+verification status, tags, source provenance, section heading, chunk ordinal,
+and content digest. Synchronization creates only the configured project
+collection, validates an existing collection's vector schema, upserts current
+points, and deletes only stale points carrying the project ownership marker. It
+never replaces canonical Markdown or silently recreates an incompatible
+collection.
+
+A separate read-only Python inspection API lists canonical documents, scrolls
+indexed chunks and metadata, reports collection state, and performs bounded
+cosine retrieval. Retrieval filters to `verified` knowledge by default and
+returns exact chunk text and provenance. M7 does not build an LLM prompt or
+expose FastAPI routes.
+
 ### LLM Input Builder
 Constructs concise, traceable input for a future LLM.
 
@@ -120,6 +139,9 @@ Provides workload controls, live graphs, and analysis views.
 - JSON artifacts: reproducible observations and experiments.
 - Markdown/JSON: canonical knowledge.
 - Qdrant: embeddings and searchable knowledge payloads.
+
+Qdrant is derived and rebuildable; `knowledge/manifest.json` and registered
+Markdown remain authoritative.
 
 No ClickHouse, crawler, or additional database.
 

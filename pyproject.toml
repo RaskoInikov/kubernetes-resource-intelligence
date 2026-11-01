@@ -11,6 +11,7 @@ requires-python = ">=3.12"
 license = { text = "Proprietary" }
 authors = [{ name = "Kubernetes Resource Intelligence contributors" }]
 dependencies = [
+    "fastembed>=0.7,<1",
     "pydantic-settings>=2.6,<3",
 ]
 

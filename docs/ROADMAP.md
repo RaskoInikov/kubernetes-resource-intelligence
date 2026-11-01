@@ -183,6 +183,36 @@ M11 — React two-panel interface.
   checksum, heading, registration, coverage, and verification failures without
   Kubernetes, Prometheus, Qdrant, or network access.
 
+## M7 Acceptance Criteria
+
+- A deterministic versioned chunker converts every validated canonical M6
+  document into ordered, non-empty Markdown-section chunks with stable IDs,
+  exact text digests, document metadata, verification status, and provenance.
+- A versioned local pretrained semantic embedder produces fixed-size finite
+  normalized vectors, records its exact model identity, and is shared by
+  indexing and retrieval. Offline tests inject a deterministic model double and
+  require no weights or network access.
+- Qdrant point IDs and payloads are deterministic and include project ownership,
+  repository/document/chunker/embedder versions, section/ordinal, tags, sources,
+  verification status, exact chunk text, and content digest.
+- Synchronization creates only the configured collection, validates vector size
+  and cosine distance on an existing collection, upserts current points, and
+  deletes only stale project-owned points. It fails rather than deleting or
+  recreating an incompatible collection.
+- The canonical manifest and Markdown remain authoritative; Qdrant is derived
+  state that can be rebuilt and never updates M6 verification metadata.
+- A read-only Python API lists canonical documents, reports collection/index
+  metadata, scrolls indexed chunks with optional document scope, retrieves an
+  exact chunk, and performs bounded retrieval over verified documents.
+- Retrieval validates Qdrant payloads, preserves exact chunk/source provenance,
+  returns finite scores in descending order, and explicitly fails on malformed
+  responses, foreign ownership, missing chunks, or transport errors.
+- Offline tests use a fake Qdrant gateway and cover deterministic chunking and
+  embedding, collection creation/schema mismatch, idempotent sync, stale-owned
+  cleanup without foreign deletion, inspection, filters, retrieval ordering,
+  malformed payloads/responses, and transport failures without external
+  services.
+
 ## Completion Rules
 
 Each milestone must:
