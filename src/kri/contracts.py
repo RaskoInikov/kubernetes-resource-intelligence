@@ -1280,6 +1280,124 @@ class LLMInputSummary(ContractModel):
     package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class MetricsRangeRequest(ContractModel):
+    """Bounded raw Prometheus interval requested through M10."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    interval_start: datetime
+    interval_end: datetime
+    step_seconds: int = Field(default=5, ge=1, le=60)
+
+    @field_validator("interval_start", "interval_end")
+    @classmethod
+    def metrics_request_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("metrics interval timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def metrics_request_interval_is_ordered(self) -> "MetricsRangeRequest":
+        if self.interval_end <= self.interval_start:
+            raise ValueError("metrics interval end must follow its start")
+        if (self.interval_end - self.interval_start).total_seconds() < 0.001:
+            raise ValueError("metrics interval must span at least one millisecond")
+        return self
+
+
+class ObservationCreateRequest(MetricsRangeRequest):
+    """Create one immutable M4 observation from current external sources."""
+
+    observation_id: str | None = None
+
+    @field_validator("observation_id")
+    @classmethod
+    def optional_observation_id_is_safe(cls, value: str | None) -> str | None:
+        if value is not None and OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("observation ID must be a lowercase DNS label")
+        return value
+
+
+class StartLoadRequest(ContractModel):
+    """Explicit M10 request to create one independently managed load Job."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    workload: WorkloadConfiguration
+    load: LoadConfiguration
+    experiment_id: str | None = None
+
+    @field_validator("experiment_id")
+    @classmethod
+    def optional_experiment_id_is_safe(cls, value: str | None) -> str | None:
+        if value is not None and EXPERIMENT_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("experiment ID must be a lowercase DNS label")
+        return value
+
+
+class AnalysisCreateRequest(ContractModel):
+    """Run M5 against one immutable stored observation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    observation_id: str
+    analysis_id: str | None = None
+
+    @field_validator("observation_id", "analysis_id")
+    @classmethod
+    def analysis_request_ids_are_safe(cls, value: str | None) -> str | None:
+        if value is not None and OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("analysis request IDs must be lowercase DNS labels")
+        return value
+
+
+class EvidenceCreateRequest(ContractModel):
+    """Run M8 from the exact deterministic report supplied by the caller."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    analysis: AnalysisReport
+    limit_per_query: int = Field(default=5, ge=1, le=20)
+
+
+class LLMInputCreateRequest(ContractModel):
+    """Build and persist M9 from exact matching M5 and M8 contracts."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    analysis: AnalysisReport
+    evidence: OperationalEvidencePackage
+    package_id: str | None = None
+
+    @field_validator("package_id")
+    @classmethod
+    def optional_package_id_is_safe(cls, value: str | None) -> str | None:
+        if value is not None and OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("package ID must be a lowercase DNS label")
+        return value
+
+
+class ApiOperationResponse(ContractModel):
+    """Versioned acknowledgement for an explicit HTTP mutation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    operation: str = Field(min_length=1)
+    resource: str = Field(min_length=1)
+    status: Literal["completed"] = "completed"
+
+
+class ApiHealthResponse(ContractModel):
+    """Process-only health response with no external dependency probing."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    status: Literal["ok"] = "ok"
+    api_version: Literal["v1"] = "v1"
+
+
+class ApiErrorResponse(ContractModel):
+    """Stable M10 error payload."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    message: str = Field(min_length=1)
+    details: tuple[str, ...] = ()
+
+
 class RetrievalJudgment(ContractModel):
     """Independent graded relevance judgment for one canonical chunk."""
 

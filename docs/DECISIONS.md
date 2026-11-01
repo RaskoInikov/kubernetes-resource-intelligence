@@ -102,3 +102,13 @@ deduplicated excerpts, and 600 characters per excerpt while recording retrieved
 and included counts. Persist immutable JSON inside a package-digest envelope.
 Reject mismatched or dangling inputs; do not recalculate numbers, invoke an LLM,
 or infer Kubernetes changes.
+
+## D018 — Thin Versioned HTTP Orchestration
+Expose M1-M9 through one `/api/v1` FastAPI boundary whose successful bodies are
+the existing contracts. Keep Kubernetes mutation explicit and separate from all
+collection/analysis routes. Persist only artifacts whose owning milestones
+already define immutable stores (M4 observations and M9 packages); return M5
+analysis and M8 evidence directly and require clients to pass those exact
+contracts forward. Query only an already synchronized Qdrant index. Use typed
+422/404/409/502 failures, dependency-injected services for offline testing, and
+no implicit LLM inference or remediation.

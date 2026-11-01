@@ -395,3 +395,54 @@ python scripts/verify_m9_pipeline.py \
 
 The command mutates only the named Qdrant collection and generated output
 directory. Run it only against an approved isolated Qdrant instance.
+
+## M10 FastAPI
+
+M10 exposes the existing M1-M9 components beneath `/api/v1`. Start the
+loopback-only development server after configuring `.env`:
+
+```bash
+kri-api
+```
+
+Interactive OpenAPI is available at `http://127.0.0.1:8000/docs`. The principal
+routes are:
+
+- `PUT` / `DELETE /api/v1/workload` — explicitly deploy or delete only the M1
+  application.
+- `POST /api/v1/load-experiments`, `POST .../{id}/stop`, and `GET .../{id}` —
+  independently control and inspect load Jobs.
+- `GET /api/v1/workload` and `POST /api/v1/metrics/query` — collect current
+  Kubernetes state and raw timestamped Prometheus series.
+- `POST /api/v1/observations`, `GET .../{id}`, and `GET .../{id}/summary` —
+  create and inspect immutable M4 snapshots.
+- `POST /api/v1/analyses` — run M5 from a stored observation.
+- `POST /api/v1/rag/evidence` — run M8 from the exact supplied M5 report.
+- `POST /api/v1/llm-inputs`, `GET .../{id}`, and `GET .../{id}/summary` — build,
+  persist, and inspect M9 packages.
+
+The API never synchronizes Qdrant implicitly; the configured collection must
+already contain the M7 index. M5 and M8 results are returned directly rather
+than hidden in a server cache, so callers pass the exact versioned contracts to
+the next stage. Only the explicit workload routes mutate Kubernetes. No route
+invokes an LLM, applies recommendations, creates namespaces, or substitutes
+missing metric values.
+
+After explicitly synchronizing an isolated Qdrant collection and starting the
+API against it, the retained-observation HTTP workflow can be verified with:
+
+```bash
+python scripts/verify_m10_api.py \
+  --url http://127.0.0.1:8000 \
+  --observation-id obs-m3-verify-20261031 \
+  --analysis-id analysis-m10-api-20261101 \
+  --package-id llm-input-m10-api-20261101 \
+  --output-directory results/m10-verification
+```
+
+The verifier checks health and OpenAPI, loads and inspects the immutable M4
+observation, invokes M5 and M8, creates and reloads M9 through HTTP, verifies
+identity and source-digest continuity, requires verified retrieval hits, and
+writes the exact returned contracts plus a bounded summary. Package IDs are
+immutable, so use a new ID or remove only a disposable prior verification
+artifact before repeating the command.

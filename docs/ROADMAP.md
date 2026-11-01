@@ -267,6 +267,35 @@ M11 — React two-panel interface.
   mismatches, malformed inputs, immutable persistence, corruption, and
   inspection without external services or model inference.
 
+## M10 Acceptance Criteria
+
+- A FastAPI application exposes versioned health, workload deployment/deletion,
+  load start/stop/status, current workload, raw live metrics, observation
+  creation/loading/inspection, deterministic analysis, RAG evidence, and M9
+  package creation/loading/inspection routes with generated OpenAPI.
+- Workload mutation routes call only the existing scoped M1 controller; read and
+  analysis routes do not mutate Kubernetes, and stopping load remains separate
+  from application deletion.
+- Live metrics and observation creation require an ordered timezone-aware
+  interval and bounded Prometheus step, return raw timestamped source samples,
+  preserve missing-data records, and never calculate or substitute values.
+- Observation creation collects identity-matched M3 inputs, builds one M4
+  snapshot, persists it immutably, and reports overwrite conflicts explicitly.
+- Analysis consumes only a replay-validated stored observation. RAG consumes an
+  exact M5 report, and LLM-input creation consumes exact matching M5/M8
+  contracts and persists through the M9 integrity store.
+- Retrieval uses an already synchronized configured Qdrant collection; no read
+  endpoint creates, synchronizes, deletes, or repairs vector state.
+- HTTP errors distinguish request validation, missing artifacts, lifecycle or
+  immutable conflicts, and external dependency failure without returning a
+  successful partial result.
+- Production service construction validates `KRI_` settings before external
+  contact and scopes generated artifacts beneath the configured local results
+  directories. No endpoint invokes an LLM or applies a recommendation.
+- Offline FastAPI tests inject fakes and cover every success route, validation,
+  error mapping, component arguments, persistence behavior, and OpenAPI without
+  Kubernetes, Prometheus, Qdrant, model downloads, or network services.
+
 ## Completion Rules
 
 Each milestone must:

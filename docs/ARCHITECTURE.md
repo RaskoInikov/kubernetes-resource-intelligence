@@ -164,6 +164,22 @@ not construct free-form prompt text, invoke an LLM, or mutate any source.
 ### FastAPI
 Exposes workload, monitoring, analysis, and knowledge APIs.
 
+In M10 one versioned local-development HTTP API composes the existing M1-M9
+components without changing their ownership boundaries. Explicit `PUT`,
+`POST`, and `DELETE` workload routes are the only Kubernetes mutation paths.
+Read routes collect the current workload, query raw Prometheus source series,
+load immutable observations, or inspect stored M9 packages. Observation
+creation collects one identity-matched Kubernetes/Prometheus pair and persists
+it through the M4 store.
+
+Analysis accepts a stored observation ID and returns an M5 report. RAG accepts
+that complete report and returns its M8 evidence package. M9 accepts both exact
+contracts, validates their linkage, persists the package, and returns it. The
+API does not hide Qdrant synchronization inside retrieval, persist transient M5
+or M8 results, recalculate metrics, invoke an LLM, apply recommendations, or
+create namespaces. Production construction validates all settings before
+creating external clients; tests inject service doubles and remain offline.
+
 ### React
 Provides workload controls, live graphs, and analysis views.
 

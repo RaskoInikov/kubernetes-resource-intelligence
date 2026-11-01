@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M9 — Validated LLM input builder (complete, offline verified)
+M10 — FastAPI integration (complete, offline verified)
 
 ## Completed
 - Git repository initialized.
@@ -104,6 +104,18 @@ M9 — Validated LLM input builder (complete, offline verified)
 - Canonical digests bind the complete M5 and M8 inputs. Immutable atomic JSON
   storage adds a package digest, rejects overwrite and corruption, and exposes
   a bounded inspection summary.
+- A versioned FastAPI application now exposes explicit workload and load
+  controls, current Kubernetes state, raw live Prometheus metrics, immutable
+  observation creation/loading/inspection, deterministic analysis, RAG
+  evidence, and persisted LLM-input creation/loading/inspection.
+- M10 composes the existing service boundaries through injected protocols and
+  offloads blocking Kubernetes, Prometheus, filesystem, embedding, and Qdrant
+  work from the event loop. Production construction validates settings first;
+  offline tests replace every external boundary.
+- Structured API failures distinguish request validation, missing artifacts,
+  lifecycle or immutable conflicts, invalid analysis/input, and external
+  dependency failures. Qdrant synchronization and LLM inference remain outside
+  all API read and analysis routes.
 
 ## Verification
 
@@ -284,13 +296,41 @@ M9 — Validated LLM input builder (complete, offline verified)
   validated on load. Generated artifacts remain under
   `results/m9-verification/`; the isolated container and tmpfs state were
   removed after verification.
+- M10 `make verify` passed in the project virtual environment on 2026-11-01
+  with Ruff, strict mypy, and 271 offline pytest cases at 100% statement and
+  branch coverage. Twenty-nine M10 tests exercise every success route through
+  in-process ASGI requests, OpenAPI, exact component arguments, observation and
+  package persistence, safe-ID and interval validation, all documented error
+  mappings, production service construction, and the loopback runner without
+  Kubernetes, Prometheus, Qdrant, model downloads, or network services.
+- Real M10 verification passed on 2026-11-01 through a Uvicorn server on
+  loopback using retained observation `obs-m3-verify-20261031` and isolated
+  collection `kri_m10_api_20261101` in a Qdrant 1.19.1 tmpfs-backed container.
+  Explicit M7 synchronization indexed all six canonical documents into 26
+  MiniLM points; a second synchronization retained stable point IDs and
+  deleted no stale points.
+- HTTP health and every required M5→M8→M9 OpenAPI route were present. The API
+  loaded the complete 68-series, 1,360-sample real observation with source
+  digest `426cb9c29df1c669bc9bdc6bb88d7b264264512a423b847af835576729a9445e`,
+  reproduced 26 statistics, seven conditions, three recommendations, and six
+  uncertainties, then returned five verified knowledge hits for each of three
+  evidence queries.
+- Package `llm-input-m10-api-20261101` was created with HTTP 201, loaded and
+  inspected with HTTP 200, and matched its creation response exactly. Its
+  three queries, nine bounded hit references, five excerpts, explicit
+  timestamps, identity, uncertainties, and input digests persisted under
+  package digest
+  `a65c88b48f1d3b88f585b43aafa0a66f06298e44c566346ced14eba500e50288`.
+  Exact API responses remain under `results/m10-verification/`; the isolated
+  Qdrant container, tmpfs state, and loopback API process were removed.
 
 ## Next
-M10 — FastAPI integration.
+M11 — React two-panel interface.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- FastAPI integration, LLM inference, and the frontend are not implemented.
-  M9 exposes local Python construction, persistence, and inspection APIs only.
+- LLM inference and the React frontend are not implemented. M10 is a
+  loopback-only development API and does not provide production authentication,
+  authorization, TLS, or deployment packaging.

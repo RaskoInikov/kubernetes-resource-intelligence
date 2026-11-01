@@ -234,6 +234,29 @@ Loading rejects any package-content change, including altered numbers,
 references, risks, uncertainty, or evidence text. Persistence refuses overwrite
 and inspection returns counts and identities rather than the full LLM payload.
 
+## M10 HTTP Requests
+- Every route is under `/api/v1`; `/healthz` is the unversioned process-health
+  exception.
+- Workload deployment accepts `WorkloadConfiguration`; starting load accepts
+  exact workload/load contracts plus an optional safe experiment ID.
+- Live-metrics and observation requests contain a schema version, ordered UTC
+  interval spanning at least Prometheus's one-millisecond precision, and a step
+  from 1 through 60 seconds. Observation creation additionally accepts an
+  optional safe observation ID.
+- Analysis creation references one stored observation and an optional safe
+  analysis ID.
+- RAG creation carries one complete validated `AnalysisReport` and a result
+  limit from 1 through 20; no server-side implicit analysis lookup occurs.
+- LLM-input creation carries the complete M5 report, matching M8 evidence, and
+  an optional safe package ID.
+
+Successful API bodies reuse the existing M1-M9 contracts. Mutation
+acknowledgements and errors are structured, versioned objects. Validation
+failures use HTTP 422, missing immutable artifacts use 404, artifact/lifecycle
+conflicts use 409, and external Kubernetes/Prometheus/Qdrant failures use 502.
+No endpoint converts absent samples to zero or a recommendation into an applied
+resource change.
+
 ## Invariants
 
 - Store timestamps in UTC.
