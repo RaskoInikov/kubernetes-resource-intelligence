@@ -45,7 +45,11 @@ M11 — React two-panel interface.
 - Load runs as a separately managed Kubernetes Job. Starting or stopping load
   does not create, update, or delete the application Deployment or Service.
 - Every experiment has a safe unique identifier and a versioned JSON record
-  containing workload/load configuration, UTC timestamps, and lifecycle state.
+  containing workload/load configuration, controller and Kubernetes UTC
+  timestamps, Job identity, lifecycle state, and terminal reason provenance.
+- Reconciliation uses Kubernetes Job conditions and their timestamps, preserves
+  exact failure reasons/messages, is idempotent for terminal records, and checks
+  terminal state before an explicit stop deletes a Job.
 - Kubernetes commands always include the configured context and namespace and
   mutate only fixed, project-owned resource names or a validated experiment Job.
 - Offline tests verify contract rejection, rendered resource safety, independent
@@ -295,6 +299,42 @@ M11 — React two-panel interface.
 - Offline FastAPI tests inject fakes and cover every success route, validation,
   error mapping, component arguments, persistence behavior, and OpenAPI without
   Kubernetes, Prometheus, Qdrant, model downloads, or network services.
+
+## M11 Acceptance Criteria
+
+- A small React and TypeScript application provides a responsive two-column
+  interface with workload configuration and live metrics on the left and the
+  explicit observation, deterministic-analysis, RAG, and LLM-input workflow on
+  the right.
+- Workload controls expose CPU and memory requests/limits, replicas, load mode,
+  concurrency, request rate, duration, optional experiment identity, deploy,
+  delete, load start/status/stop, and current-workload refresh without coupling
+  load stop to application deletion.
+- Live metrics use a user-controlled ordered UTC interval and bounded step,
+  render readable timestamped traces for the required M2 signals, and display
+  missing-data records without substituting zero.
+- The analysis workflow explicitly creates or loads an immutable observation,
+  runs M5 from its ID, optionally runs M8 from the exact returned M5 report,
+  creates M9 from the exact matching M5/M8 contracts, and loads or inspects a
+  saved package by ID. Disabled stages explain their prerequisites.
+- Findings, bounded approval-required recommendations, uncertainties, evidence
+  queries, retrieved chunk provenance/scores, package counts/digests, and
+  expandable raw responses remain inspectable. The frontend performs no
+  numerical analysis or resource mutation beyond explicit M10 controls.
+- Loading state prevents duplicate actions. Structured M10 errors and network
+  failures remain visible with the operation that failed, while a later
+  successful action clears only the relevant error.
+- The API base is configurable and defaults to the Vite same-origin development
+  proxy. No frontend route synchronizes Qdrant, invokes an LLM, applies a
+  recommendation, or introduces authentication or production deployment.
+- Local commands resolve configuration from the repository-root `.env`
+  independently of working directory. The documented startup sequence provides
+  actionable read-only readiness checks for Prometheus, Qdrant, and the
+  configured collection, while React reports FastAPI connectivity immediately.
+- Offline component/API-client tests cover successful stage chaining, RAG-off
+  behavior, workload/load independence, metric and missing-data rendering, and
+  structured failure display. TypeScript checking, frontend tests, and a
+  production build are part of `make verify`.
 
 ## Completion Rules
 

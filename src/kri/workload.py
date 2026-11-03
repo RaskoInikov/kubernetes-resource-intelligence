@@ -3,7 +3,7 @@
 import json
 import re
 import subprocess
-from collections.abc import Callable, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any, Protocol
@@ -14,6 +14,7 @@ from kri.contracts import (
     ExperimentRecord,
     ExperimentState,
     LoadConfiguration,
+    TerminationSource,
     WorkloadConfiguration,
 )
 
@@ -23,6 +24,28 @@ MANAGED_LABELS = {
     "app.kubernetes.io/managed-by": "kri-workload-controller",
 }
 DNS_LABEL_PATTERN = re.compile(r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+
+
+def _kubernetes_timestamp(value: object, field: str) -> datetime | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise KubernetesCommandError(f"Job {field} is not a timestamp string")
+    try:
+        parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError as error:
+        raise KubernetesCommandError(f"Job {field} is not a valid timestamp") from error
+    if parsed.tzinfo is None:
+        raise KubernetesCommandError(f"Job {field} has no timezone")
+    return parsed.astimezone(UTC)
+
+
+def _optional_status_text(value: object, field: str) -> str | None:
+    if value is None:
+        return None
+    if not isinstance(value, str):
+        raise KubernetesCommandError(f"Job condition {field} is not text")
+    return value if value.strip() else None
 
 
 class WorkloadError(RuntimeError):
@@ -278,7 +301,6 @@ def load_job_resource(
         "spec": {
             "backoffLimit": 0,
             "activeDeadlineSeconds": configuration.duration_seconds + 60,
-            "ttlSecondsAfterFinished": 300,
             "template": {
                 "metadata": {"labels": labels},
                 "spec": {
@@ -351,17 +373,36 @@ class WorkloadController:
         self.store.create(record)
         try:
             self.kubernetes.apply([load_job_resource(identifier, load, self.image)])
-        except KubernetesCommandError:
-            self._finish(record, ExperimentState.FAILED)
+        except KubernetesCommandError as error:
+            self._finish(
+                record,
+                ExperimentState.FAILED,
+                end_timestamp=self.clock(),
+                reason="SubmissionFailed",
+                message=str(error) or None,
+                source=TerminationSource.CONTROLLER,
+            )
             raise
         return record
 
     def stop_load(self, experiment_id: str) -> ExperimentRecord:
         record = self.store.load(experiment_id)
         if record.lifecycle_state is not ExperimentState.RUNNING:
-            raise WorkloadError(f"experiment is already {record.lifecycle_state.value}")
+            self.kubernetes.delete("job", f"kri-load-{experiment_id}")
+            return record
+        record = self.sync_load(experiment_id)
+        if record.lifecycle_state is not ExperimentState.RUNNING:
+            self.kubernetes.delete("job", f"kri-load-{experiment_id}")
+            return record
         self.kubernetes.delete("job", f"kri-load-{experiment_id}")
-        return self._finish(record, ExperimentState.STOPPED)
+        return self._finish(
+            record,
+            ExperimentState.STOPPED,
+            end_timestamp=self.clock(),
+            reason="UserStopped",
+            message="Load Job deleted by an explicit stop request.",
+            source=TerminationSource.CONTROLLER,
+        )
 
     def sync_load(self, experiment_id: str) -> ExperimentRecord:
         record = self.store.load(experiment_id)
@@ -371,22 +412,103 @@ class WorkloadController:
         status = job.get("status", {})
         if not isinstance(status, dict):
             raise KubernetesCommandError("Job status is not an object")
-        if status.get("succeeded", 0):
-            return self._finish(record, ExperimentState.SUCCEEDED)
-        if status.get("failed", 0) and not status.get("active", 0):
-            return self._finish(record, ExperimentState.FAILED)
-        return record
+        metadata = job.get("metadata", {})
+        if not isinstance(metadata, dict):
+            raise KubernetesCommandError("Job metadata is not an object")
+        uid = metadata.get("uid")
+        if uid is not None and not isinstance(uid, str):
+            raise KubernetesCommandError("Job UID is not text")
+        if record.job_uid is not None and uid is not None and record.job_uid != uid:
+            raise KubernetesCommandError("Job UID does not match experiment record")
+        start_timestamp = _kubernetes_timestamp(status.get("startTime"), "startTime")
+        conditions = status.get("conditions", [])
+        if not isinstance(conditions, list):
+            raise KubernetesCommandError("Job conditions are not a list")
+        terminal: list[tuple[ExperimentState, dict[str, Any]]] = []
+        for condition in conditions:
+            if not isinstance(condition, dict):
+                raise KubernetesCommandError("Job condition is not an object")
+            if condition.get("status") != "True":
+                continue
+            condition_type = condition.get("type")
+            if condition_type == "Complete":
+                terminal.append((ExperimentState.SUCCEEDED, condition))
+            elif condition_type == "Failed":
+                terminal.append((ExperimentState.FAILED, condition))
+        if len(terminal) > 1:
+            raise KubernetesCommandError("Job has conflicting terminal conditions")
+
+        updates = {
+            "schema_version": "1.1",
+            "job_uid": uid or record.job_uid,
+            "job_start_timestamp": start_timestamp or record.job_start_timestamp,
+        }
+        if terminal:
+            state, condition = terminal[0]
+            if uid is None or start_timestamp is None:
+                raise KubernetesCommandError(
+                    "terminal Job has no UID or start timestamp"
+                )
+            condition_timestamp = _kubernetes_timestamp(
+                condition.get("lastTransitionTime"),
+                "condition.lastTransitionTime",
+            )
+            completion_timestamp = _kubernetes_timestamp(
+                status.get("completionTime"), "completionTime"
+            )
+            end_timestamp = (
+                completion_timestamp
+                if state is ExperimentState.SUCCEEDED
+                else condition_timestamp
+            ) or condition_timestamp
+            if end_timestamp is None:
+                return self._save_running_metadata(record, updates)
+            default_reason = (
+                "Complete" if state is ExperimentState.SUCCEEDED else "Failed"
+            )
+            return self._finish(
+                record,
+                state,
+                end_timestamp=end_timestamp,
+                reason=_optional_status_text(condition.get("reason"), "reason")
+                or default_reason,
+                message=_optional_status_text(condition.get("message"), "message"),
+                source=TerminationSource.KUBERNETES,
+                updates=updates,
+            )
+        return self._save_running_metadata(record, updates)
+
+    def _save_running_metadata(
+        self,
+        record: ExperimentRecord,
+        updates: Mapping[str, object],
+    ) -> ExperimentRecord:
+        reconciled = ExperimentRecord.model_validate({**record.model_dump(), **updates})
+        if reconciled != record:
+            self.store.save(reconciled)
+        return reconciled
 
     def _finish(
         self,
         record: ExperimentRecord,
         state: ExperimentState,
+        *,
+        end_timestamp: datetime,
+        reason: str,
+        message: str | None,
+        source: TerminationSource,
+        updates: Mapping[str, object] | None = None,
     ) -> ExperimentRecord:
         finished = ExperimentRecord.model_validate(
             {
                 **record.model_dump(),
-                "end_timestamp": self.clock(),
+                **(updates or {}),
+                "schema_version": "1.1",
+                "end_timestamp": end_timestamp,
                 "lifecycle_state": state,
+                "termination_reason": reason,
+                "termination_message": message,
+                "termination_source": source,
             }
         )
         self.store.save(finished)

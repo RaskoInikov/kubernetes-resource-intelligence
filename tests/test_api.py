@@ -183,6 +183,8 @@ def experiment(state: ExperimentState = ExperimentState.RUNNING) -> ExperimentRe
         start_timestamp=START,
         end_timestamp=END if terminal else None,
         lifecycle_state=state,
+        termination_reason="UserStopped" if terminal else None,
+        termination_source="controller" if terminal else None,
     )
 
 
@@ -340,6 +342,8 @@ def test_all_api_success_routes_and_openapi(tmp_path: Path) -> None:
     assert client.get("/api/v1/load-experiments/exp-api").status_code == 200
     stopped = client.post("/api/v1/load-experiments/exp-api/stop")
     assert stopped.json()["lifecycle_state"] == "stopped"
+    assert stopped.json()["termination_reason"] == "UserStopped"
+    assert stopped.json()["termination_source"] == "controller"
 
     metrics = client.post("/api/v1/metrics/query", json=interval_body())
     assert metrics.status_code == 200

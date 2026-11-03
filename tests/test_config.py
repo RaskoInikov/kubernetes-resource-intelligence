@@ -6,6 +6,7 @@ from pathlib import Path
 import pytest
 from pydantic import ValidationError
 
+from kri import config
 from kri.config import Settings, load_settings
 
 ENVIRONMENT = {
@@ -56,7 +57,10 @@ def test_load_settings_from_dotenv(
 ) -> None:
     dotenv = "\n".join(f"{name}={value}" for name, value in ENVIRONMENT.items())
     (tmp_path / ".env").write_text(f"{dotenv}\n", encoding="utf-8")
-    monkeypatch.chdir(tmp_path)
+    elsewhere = tmp_path / "elsewhere"
+    elsewhere.mkdir()
+    monkeypatch.chdir(elsewhere)
+    monkeypatch.setattr(config, "PROJECT_DOTENV", tmp_path / ".env")
 
     settings = load_settings()
 

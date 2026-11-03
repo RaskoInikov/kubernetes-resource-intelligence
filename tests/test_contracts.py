@@ -99,15 +99,30 @@ def test_experiment_lifecycle_contract() -> None:
         start_timestamp=started,
         lifecycle_state=ExperimentState.RUNNING,
     )
-    terminal = record.model_copy(
-        update={
+    terminal = ExperimentRecord.model_validate(
+        {
+            **record.model_dump(),
+            "job_uid": "job-uid-1",
+            "job_start_timestamp": started,
             "end_timestamp": started + timedelta(seconds=1),
             "lifecycle_state": ExperimentState.SUCCEEDED,
+            "termination_reason": "Complete",
+            "termination_source": "kubernetes",
         }
     )
 
     assert record.end_timestamp is None
     assert terminal.lifecycle_state is ExperimentState.SUCCEEDED
+
+    legacy = ExperimentRecord.model_validate(
+        {
+            **terminal.model_dump(),
+            "schema_version": "1.0",
+            "termination_reason": None,
+            "termination_source": None,
+        }
+    )
+    assert legacy.schema_version == "1.0"
 
 
 @pytest.mark.parametrize(
@@ -115,11 +130,34 @@ def test_experiment_lifecycle_contract() -> None:
     [
         {"experiment_id": "NOT_SAFE"},
         {"start_timestamp": datetime(2026, 10, 31)},
+        {"job_uid": " "},
+        {"job_start_timestamp": datetime(2026, 10, 31)},
         {"end_timestamp": datetime(2026, 10, 31, tzinfo=UTC)},
+        {"termination_reason": "Complete"},
         {"lifecycle_state": "failed", "end_timestamp": None},
         {
             "lifecycle_state": "failed",
+            "end_timestamp": datetime(2026, 11, 1, tzinfo=UTC),
+            "job_uid": "job-uid-1",
+            "job_start_timestamp": datetime(2026, 10, 31, tzinfo=UTC),
+        },
+        {
+            "lifecycle_state": "failed",
+            "end_timestamp": datetime(2026, 11, 1, tzinfo=UTC),
+            "termination_reason": "Failed",
+            "termination_source": "kubernetes",
+        },
+        {
+            "lifecycle_state": "failed",
             "end_timestamp": datetime(2026, 10, 30, tzinfo=UTC),
+        },
+        {
+            "lifecycle_state": "failed",
+            "job_uid": "job-uid-1",
+            "job_start_timestamp": datetime(2026, 11, 2, tzinfo=UTC),
+            "end_timestamp": datetime(2026, 11, 1, tzinfo=UTC),
+            "termination_reason": "Failed",
+            "termination_source": "kubernetes",
         },
     ],
 )

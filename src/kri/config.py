@@ -1,19 +1,21 @@
 """Validated process configuration for external service boundaries."""
 
 from functools import lru_cache
+from pathlib import Path
 from typing import Annotated
 
 from pydantic import AnyHttpUrl, StringConstraints
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 NonEmptyString = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+PROJECT_DOTENV = PROJECT_ROOT / ".env"
 
 
 class Settings(BaseSettings):
     """Configuration loaded from ``KRI_`` environment variables."""
 
     model_config = SettingsConfigDict(
-        env_file=".env",
         env_file_encoding="utf-8",
         env_prefix="KRI_",
         extra="ignore",
@@ -32,6 +34,6 @@ class Settings(BaseSettings):
 
 @lru_cache(maxsize=1)
 def load_settings() -> Settings:
-    """Load and cache validated process configuration."""
+    """Load cached configuration from the project root regardless of cwd."""
 
-    return Settings()
+    return Settings(_env_file=PROJECT_DOTENV)

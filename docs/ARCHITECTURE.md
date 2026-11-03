@@ -24,6 +24,14 @@ Stopping a load experiment deletes only its Job; application removal is a
 separate operation. The target application and load generator share a small,
 buildable test image but run as separate Kubernetes workloads.
 
+Lifecycle reads reconcile the persisted record with the Job UID, start time,
+terminal condition, completion/transition time, reason, and message. Explicit
+stop first reconciles the Job so a completed or failed run cannot be relabeled
+as stopped. M11 polls only running experiments and renders the reconciled start,
+end, reason, and provenance; terminal records are immutable and polling stops.
+Finished Jobs are retained until an explicit stop/cleanup request so their
+terminal status cannot disappear before reconciliation.
+
 The load generator is rate-controlled but never queues beyond its configured
 concurrency. When the target is throttled or slow, excess scheduled arrivals are
 skipped and in-flight request timeouts are limited by the remaining configured
@@ -182,6 +190,30 @@ creating external clients; tests inject service doubles and remain offline.
 
 ### React
 Provides workload controls, live graphs, and analysis views.
+
+In M11 a small Vite-built React and TypeScript client calls only the versioned
+M10 HTTP routes. The left panel owns editable workload and load configuration,
+explicit deploy/delete/start/stop actions, current workload inspection, and
+bounded raw-metric queries rendered as lightweight SVG traces. The right panel
+owns one UTC observation interval and the explicit M4→M5→M8→M9 sequence. It
+passes the complete returned M5 and M8 contracts to the next API stage rather
+than reconstructing or caching hidden server state.
+
+The browser keeps only disposable in-memory workflow state. It presents
+structured API errors, missing-data records, stage prerequisites, timestamps,
+counts, findings, recommendations, retrieval scores/provenance, package
+digests, and expandable raw JSON for debugging. A development proxy keeps the
+default client same-origin with FastAPI; an optional build-time API base URL
+supports other local arrangements. M11 does not calculate metrics, infer a
+diagnosis, synchronize Qdrant, invoke an LLM, apply recommendations, or add a
+production deployment boundary.
+
+Local startup resolves `.env` from the repository root rather than process
+working directory. A read-only development preflight probes Prometheus and
+Qdrant readiness plus the configured derived collection before the recommended
+API command starts. Knowledge synchronization remains a separate explicit
+mutation. The React header independently checks FastAPI liveness so a missing
+API is visible before the first workflow action.
 
 ## Storage
 

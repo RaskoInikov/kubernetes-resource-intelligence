@@ -91,16 +91,42 @@ class ExperimentState(StrEnum):
     FAILED = "failed"
 
 
+class TerminationSource(StrEnum):
+    """Authority that supplied an experiment's terminal outcome."""
+
+    KUBERNETES = "kubernetes"
+    CONTROLLER = "controller"
+
+
 class ExperimentRecord(ContractModel):
     """Traceable state for one load Job."""
 
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    schema_version: Literal["1.0", "1.1"] = "1.1"
     experiment_id: str
     workload_configuration: WorkloadConfiguration
     load_configuration: LoadConfiguration
     start_timestamp: datetime
+    job_uid: str | None = None
+    job_start_timestamp: datetime | None = None
     end_timestamp: datetime | None = None
     lifecycle_state: ExperimentState
+    termination_reason: str | None = None
+    termination_message: str | None = None
+    termination_source: TerminationSource | None = None
+
+    @field_validator("job_uid", "termination_reason", "termination_message")
+    @classmethod
+    def optional_text_is_not_blank(cls, value: str | None) -> str | None:
+        if value is not None and not value.strip():
+            raise ValueError("optional experiment text cannot be blank")
+        return value
+
+    @field_validator("job_start_timestamp", "end_timestamp")
+    @classmethod
+    def optional_timestamp_has_timezone(cls, value: datetime | None) -> datetime | None:
+        if value is not None and value.tzinfo is None:
+            raise ValueError("experiment timestamps must include a timezone")
+        return value
 
     @model_validator(mode="after")
     def validate_lifecycle(self) -> "ExperimentRecord":
@@ -115,6 +141,15 @@ class ExperimentRecord(ContractModel):
             and self.end_timestamp is not None
         ):
             raise ValueError("a running experiment cannot have an end timestamp")
+        terminal_metadata = (
+            self.termination_reason,
+            self.termination_message,
+            self.termination_source,
+        )
+        if self.lifecycle_state is ExperimentState.RUNNING and any(
+            value is not None for value in terminal_metadata
+        ):
+            raise ValueError("a running experiment cannot have termination metadata")
         if self.lifecycle_state is not ExperimentState.RUNNING:
             if self.end_timestamp is None or self.end_timestamp.tzinfo is None:
                 raise ValueError(
@@ -122,6 +157,25 @@ class ExperimentRecord(ContractModel):
                 )
             if self.end_timestamp < self.start_timestamp:
                 raise ValueError("end timestamp cannot precede start timestamp")
+            if self.schema_version == "1.1" and (
+                self.termination_reason is None or self.termination_source is None
+            ):
+                raise ValueError(
+                    "a version 1.1 terminal experiment requires reason and source"
+                )
+            if self.schema_version == "1.1" and (
+                self.termination_source is TerminationSource.KUBERNETES
+                and (self.job_uid is None or self.job_start_timestamp is None)
+            ):
+                raise ValueError(
+                    "a Kubernetes terminal experiment requires Job identity and start"
+                )
+        if (
+            self.job_start_timestamp is not None
+            and self.end_timestamp is not None
+            and self.end_timestamp < self.job_start_timestamp
+        ):
+            raise ValueError("end timestamp cannot precede Job start timestamp")
         return self
 
 

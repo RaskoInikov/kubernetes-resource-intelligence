@@ -9,12 +9,14 @@ analysis and bounded recommendations; M6 adds canonical verified knowledge; and
 M7 builds a derived Qdrant index with read-only knowledge inspection and
 retrieval. M8 retrieves and evaluates analysis-grounded operational evidence;
 M9 builds an integrity-checked, inspectable LLM handoff without invoking a
-model.
+model; M10 exposes the complete pipeline through FastAPI; and M11 adds a small
+React and TypeScript testing console.
 
 ## Requirements
 
 - Python 3.12 or newer
 - A virtual environment tool (`venv` is sufficient)
+- Node.js 20 or newer and npm
 
 No Kubernetes cluster or external service is needed for offline verification.
 
@@ -26,6 +28,7 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
 cp .env.example .env
+npm --prefix web ci
 ```
 
 `.env` is for local values and is not committed. Settings use the `KRI_`
@@ -46,6 +49,9 @@ python -m ruff check .
 python -m ruff format --check .
 python -m mypy
 python -m pytest --cov=kri --cov-report=term-missing
+npm --prefix web run typecheck
+npm --prefix web test
+npm --prefix web run build
 ```
 
 These checks are offline. Future real-service checks must be reported
@@ -61,7 +67,7 @@ separately, as required by `AGENTS.md`.
 - `knowledge/` — canonical Markdown knowledge and its versioned integrity
   manifest.
 - `results/` — generated experiment artifacts (ignored except `.gitkeep`).
-- `web/` — future frontend application.
+- `web/` — disposable React and TypeScript pipeline testing interface.
 - `docs/` — product, architecture, contracts, roadmap, and progress.
 
 See `docs/ROADMAP.md` for milestone scope. Do not implement later milestones
@@ -105,7 +111,11 @@ kri-workload delete
 `stop-load` deletes only `job/kri-load-<experiment-id>`. It does not modify the
 Deployment or Service. `delete` is the distinct application-removal operation.
 Experiment records are written atomically beneath `results/experiments/` and
-are ignored by Git.
+are ignored by Git. `status` reconciles a running record with the Kubernetes
+Job UID, actual Job start time, terminal condition time, reason, message, and
+final state. `stop-load` performs that reconciliation before deletion, so a Job
+that already completed or failed is not relabeled as stopped. Finished Jobs are
+retained until explicit stop/cleanup so their final status remains available.
 
 The request rate is a target, not an unbounded queue. If all configured workers
 are occupied, scheduled arrivals are skipped. New requests stop at the duration
@@ -446,3 +456,85 @@ identity and source-digest continuity, requires verified retrieval hits, and
 writes the exact returned contracts plus a bounded summary. Package IDs are
 immutable, so use a new ID or remove only a disposable prior verification
 artifact before repeating the command.
+
+## M11 testing interface
+
+`kri-api` always resolves configuration from the repository-root `.env`, even
+when it is launched from another working directory. Environment variables still
+take precedence. For a complete local pipeline, use this order:
+
+1. Copy `.env.example` to `.env` and adjust the context, namespace, image, and
+   collection if needed. The defaults expect Prometheus on port 9090 and Qdrant
+   HTTP on port 6333.
+
+   Existing `.env` files created from an older example may still use port 6334,
+   which is Qdrant's gRPC port. Change `KRI_QDRANT_URL` to
+   `http://localhost:6333` for the HTTP gateway used by this project.
+2. In terminal 1, expose the already deployed project Prometheus from the kind
+   cluster:
+
+```bash
+kubectl --context kind-kube-optimizer --namespace kri-monitoring \
+  port-forward service/kri-prometheus 9090:9090
+```
+
+If those monitoring resources are absent, `deploy/monitoring/prometheus.yaml`
+must be applied as a separately approved disposable Kubernetes mutation before
+continuing.
+
+3. In terminal 2, start a disposable Qdrant using the version verified by this
+project:
+
+```bash
+docker run --rm --name kri-dev-qdrant \
+  --publish 127.0.0.1:6333:6333 \
+  qdrant/qdrant@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10
+```
+
+4. Explicitly create or synchronize only the configured derived collection,
+   then run the read-only dependency preflight:
+
+```bash
+make sync-knowledge
+make dev-check
+```
+
+`dev-check` reports Prometheus, Qdrant, and a missing Qdrant collection
+separately, including the failing URL and recovery command. It never modifies a
+service.
+
+5. Start FastAPI and React in terminals 3 and 4:
+
+```bash
+make dev-api
+make dev-web
+```
+
+`make dev-api` repeats the preflight before invoking `kri-api`. Direct
+`kri-api` remains available when a partial API is useful. The React header
+checks `/healthz` immediately and displays a clear connection error if FastAPI
+is unavailable; operation-specific Prometheus or Qdrant failures retain the
+structured M10 error response.
+
+Open `http://127.0.0.1:5173`. Vite proxies `/api` and `/healthz` to
+`http://127.0.0.1:8000`, so the default setup needs no CORS expansion. Set
+`VITE_API_BASE_URL` for a different reverse-proxied base path; an absolute
+cross-origin URL additionally requires an externally configured CORS policy.
+
+The left column configures and controls the disposable application and its
+independent load Job, queries raw live metrics, plots each returned series, and
+keeps missing-data reports visibly distinct from zero. The right column makes
+the M4→M5→M8→M9 handoffs explicit: collect or load an observation, run the
+deterministic analyzer, optionally retrieve RAG evidence, and create or inspect
+the validated LLM input. Every stage exposes bounded summaries and expandable
+raw JSON for debugging.
+
+While a load experiment is running, the UI reconciles it every two seconds and
+stops polling at a terminal state. It displays controller submission time,
+Kubernetes Job start/end times, Job UID, final state, termination reason/source,
+and the exact Job condition message. Reconciliation failures remain visible and
+do not invent a terminal state.
+
+This UI is intentionally local and disposable. It does not synchronize Qdrant,
+invoke an LLM, apply recommendations, add authentication, or provide production
+deployment packaging.

@@ -1,7 +1,7 @@
 # Project Progress
 
 ## Current milestone
-M10 — FastAPI integration (complete, offline verified)
+M11 — React two-panel testing interface (complete, offline verified)
 
 ## Completed
 - Git repository initialized.
@@ -323,14 +323,130 @@ M10 — FastAPI integration (complete, offline verified)
   `a65c88b48f1d3b88f585b43aafa0a66f06298e44c566346ced14eba500e50288`.
   Exact API responses remain under `results/m10-verification/`; the isolated
   Qdrant container, tmpfs state, and loopback API process were removed.
+- M11 adds a local Vite, React, and strict TypeScript application under `web/`.
+  Its responsive two-column interface exposes every explicit M10 workload/load
+  control, timestamped raw metric traces and missing-data records on the left,
+  and visible M4→M5→M8→M9 stage handoffs on the right.
+- The frontend passes complete M5 and M8 responses forward unchanged, clears
+  stale downstream state when an upstream stage changes, explains disabled
+  prerequisites, prevents duplicate operations, and displays structured HTTP
+  or network failures with expandable raw contracts. Findings,
+  approval-required recommendations, uncertainties, retrieval component
+  scores/provenance, and M9 counts/digests remain inspectable.
+- M11 remains a same-origin local development client through the Vite proxy,
+  with optional `VITE_API_BASE_URL`. It has no persistent browser store and no
+  routes for Qdrant synchronization, LLM inference, recommendation application,
+  authentication, or production deployment.
+- M11 offline verification passed on 2026-11-01 with strict TypeScript, eight
+  Vitest/API-client component tests, and a Vite production build. Tests cover
+  exact M4→M9 chaining, load-stop/application-delete independence, timestamped
+  metric and missing-data rendering, RAG-off behavior, structured operation
+  errors, and immediate FastAPI connection failure. The 163.35 kB JavaScript
+  bundle is 51.67 kB gzip. `npm audit` reported zero
+  vulnerabilities after upgrading the development test runner to Vitest
+  4.1.12.
+- M11 local startup now resolves `.env` from the repository root even when
+  `kri-api` or another settings consumer starts elsewhere. A regression test
+  changes to an unrelated directory before loading the root file, while normal
+  process environment variables retain precedence.
+- `make dev-check` performs read-only Prometheus readiness, Qdrant readiness,
+  and configured-collection probes and aggregates service-specific URLs and
+  recovery instructions. `make sync-knowledge` remains the separate explicit
+  Qdrant mutation; `make dev-api` requires the preflight, and the React header
+  independently reports FastAPI liveness. The documented four-terminal local
+  procedure pins the verified Qdrant image and distinguishes its HTTP port 6333
+  from the obsolete example's gRPC port 6334.
+- Post-fix `make verify` passed on 2026-11-01 with Ruff, strict mypy, 279 Python
+  tests at 100% statement and branch coverage, eight Vitest tests, strict
+  TypeScript, and a Vite production build. No Kubernetes, Prometheus, or Qdrant
+  mutation was performed during verification.
+- The retained A/B resource experiments were evaluated offline on 2026-11-02
+  by integrity-checking and replaying observations `obs-ui-20261102154751` and
+  `obs-ui-20261102161957` through the M5 analyzer. A reproducible script and
+  digest-pinned report compare throughput, histogram p95, CPU use, throttling,
+  response-code errors, and Kubernetes stability without querying live
+  services or changing the saved artifacts.
+- Candidate B raised `/work` throughput from 9.030 to 12.525 requests/second
+  (+38.70%) and reduced p95 from 888.179 to 592.416 milliseconds (-33.30%),
+  while aggregate average CPU rose from 143.300 to 223.855 mCPU (+56.21%). Mean
+  throttled-period ratio changed only from 84.97% to 84.50%; B therefore
+  remains throttled and reached only 62.62% of the configured 20 requests/second
+  target.
+- Both snapshots show 2/2 ready Pods, zero restarts, no interval warning events,
+  and only HTTP 200 `/work` counters. Both remain degraded because the dedicated
+  error counter is absent, and both experiment records remain `running` without
+  end timestamps. The report consequently treats the status-derived 0% error
+  rate as observed but not independently verified and does not claim lifecycle
+  completion or client-side stability.
+- Post-report `make verify` passed on 2026-11-02 from the project virtual
+  environment with Ruff, strict mypy, 281 Python tests at 100% statement and
+  branch coverage, eight Vitest tests, strict TypeScript, and a Vite production
+  build. No Kubernetes, Prometheus, Qdrant, or saved-artifact mutation was
+  performed.
+- Experiment records now default to lifecycle schema 1.1 while retaining
+  read compatibility with schema 1.0. New fields preserve Kubernetes Job UID
+  and actual start time plus terminal reason, message, and controller/Kubernetes
+  provenance; terminal validation rejects incomplete or contradictory records.
+- Job reconciliation now uses `Complete`/`Failed` conditions, prefers
+  `completionTime` for success, uses the failed-condition transition time for
+  failure, rejects invalid timestamps and Job UID reuse, and waits rather than
+  inventing an end time when authoritative terminal time is absent. Submission
+  failure and explicit stop retain stable controller-owned reasons.
+- Explicit stop reconciles before deletion, preserves Jobs that already
+  succeeded or failed, and is idempotent for persisted terminal records.
+  Automatic Job TTL deletion was removed so unattended Jobs retain their
+  terminal evidence until explicit cleanup.
+- M11 now polls running experiments every two seconds, stops at terminal state,
+  and displays submission/start/end timestamps, Job UID, final state, reason,
+  provenance, and condition message. Poll failures remain visible without
+  fabricating a state. The reproducible A/B evaluator prefers the actual Job
+  start timestamp when schema 1.1 provides it.
+- Post-reconciliation `make verify` passed on 2026-11-02 with Ruff, strict
+  mypy, 303 Python tests at 100% statement and branch coverage, ten Vitest
+  tests, strict TypeScript, and a Vite production build. Verification was fully
+  offline and performed no Kubernetes or external-service mutation.
+- Real lifecycle verification passed on 2026-11-03 against context
+  `kind-kube-optimizer`, namespace `payments`, with the single approved
+  experiment `exp-lifecycle-real-20261103`. The bounded mixed load used
+  concurrency 2, target 5 requests/second, duration 20 seconds, and an
+  80-second Job deadline. Only its Job was created and subsequently deleted.
+- Reconciliation persisted Job UID
+  `c4d5e35b-509a-4578-8348-dde960e5c9af`, Kubernetes start
+  `2026-11-03T06:21:16Z`, completion `2026-11-03T06:21:40Z`, state
+  `succeeded`, reason `CompletionsReached`, exact condition message, and
+  `kubernetes` provenance. The load Pod exited 0 with reason `Completed`, zero
+  restarts, and phase `Succeeded`.
+- Repeated terminal GET through the M11-facing FastAPI endpoint left the record
+  byte-for-byte stable at SHA-256
+  `93dfd4dea7b4200e5267cfa2128d0c691bce26614a9042e27dc36af352195754`.
+  Terminal stop deleted the Job while returning the unchanged `succeeded`
+  record, demonstrating that cleanup cannot relabel completion as stopped.
+  The application Deployment UID/resourceVersion remained
+  `3360fb27-d522-4b1d-9774-aa9e359e301a`/`1195095`; both Pods remained ready
+  with zero restarts.
+- The real run verified the API contract consumed by M11, while automatic
+  polling and rendered lifecycle fields remain covered by Vitest because no
+  browser executable was available in the verification environment. A single
+  successful run does not constitute real-cluster verification of induced
+  failure or active-stop outcomes; those paths remain offline-tested.
+- Post-run `make verify` passed on 2026-11-03 with Ruff, strict mypy, 303 Python
+  tests at 100% statement and branch coverage, ten Vitest tests, strict
+  TypeScript, and a Vite production build.
 
 ## Next
-M11 — React two-panel interface.
+The planned M0–M11 first-version scope is complete. Real browser-to-service
+verification remains an explicit follow-up operation.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- LLM inference and the React frontend are not implemented. M10 is a
-  loopback-only development API and does not provide production authentication,
-  authorization, TLS, or deployment packaging.
+- LLM inference is not implemented. M10 and M11 are loopback-only development
+  tools and do not provide production authentication, authorization, TLS, or
+  deployment packaging.
+- M11 has offline component coverage and a production build, but has not yet
+  been exercised in a browser against live Kubernetes, Prometheus, and Qdrant
+  services.
+- Existing schema 1.0 experiment artifacts cannot be retroactively assigned
+  terminal state or provenance after their Kubernetes Jobs have disappeared;
+  they remain readable and their missing lifecycle evidence stays explicit.

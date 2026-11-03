@@ -1,4 +1,4 @@
-.PHONY: format lint test typecheck verify workload-image
+.PHONY: dev-api dev-check dev-web format frontend lint sync-knowledge test typecheck verify workload-image
 
 IMAGE ?= kri-workload:local
 
@@ -15,7 +15,24 @@ typecheck:
 test:
 	python -m pytest --cov=kri --cov-report=term-missing
 
-verify: lint typecheck test
+frontend:
+	npm --prefix web run typecheck
+	npm --prefix web test
+	npm --prefix web run build
+
+dev-check:
+	python scripts/check_local_services.py
+
+sync-knowledge:
+	python scripts/sync_knowledge.py
+
+dev-api: dev-check
+	kri-api
+
+dev-web:
+	npm --prefix web run dev
+
+verify: lint typecheck test frontend
 
 workload-image:
 	docker build --tag "$(IMAGE)" deploy/workload

@@ -19,6 +19,7 @@ dependencies = [
 
 [project.scripts]
 kri-api = "kri.api:run"
+kri-dev-check = "kri.dev:main"
 kri-workload = "kri.cli:main"
 
 [project.optional-dependencies]

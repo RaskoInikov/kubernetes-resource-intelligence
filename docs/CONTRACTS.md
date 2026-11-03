@@ -24,15 +24,25 @@ unbounded queue. It stops scheduling at the configured duration, and each
 request timeout is capped by the remaining experiment time.
 
 ## ExperimentRecord
-- Schema version
+- Schema version (`1.1` for lifecycle-provenance fields; retained `1.0`
+  artifacts remain readable)
 - Experiment ID
 - Workload configuration
 - Load configuration
-- Start/end timestamps
+- Controller submission timestamp, Kubernetes Job start timestamp, and terminal
+  timestamp
 - Lifecycle state: `running`, `stopped`, `succeeded`, or `failed`
+- Kubernetes Job UID
+- Terminal reason, optional terminal message, and termination source
 
 Experiment IDs are lowercase DNS-label-safe identifiers. A running record has no
-end timestamp; terminal records have a UTC end timestamp.
+end timestamp or termination fields. Version 1.1 terminal records have a UTC end
+timestamp, non-empty reason, and source (`kubernetes` or `controller`). Successful
+and failed Job timestamps and reasons come from Job status conditions, with
+`completionTime` preferred for success. Explicit stop and submission failure use
+the controller clock and stable reasons `UserStopped` and `SubmissionFailed`.
+The submission timestamp is immutable; `job_start_timestamp` records Kubernetes
+`status.startTime` when it becomes available.
 
 ## WorkloadSnapshot
 - Schema version and UTC observation timestamp

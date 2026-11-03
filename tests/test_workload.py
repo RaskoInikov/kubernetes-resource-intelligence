@@ -23,7 +23,6 @@ from kri.workload import (
     KubectlClient,
     KubernetesCommandError,
     WorkloadController,
-    WorkloadError,
     application_resources,
     load_job_resource,
 )
@@ -48,6 +47,13 @@ def load() -> LoadConfiguration:
         request_rate=12.5,
         duration_seconds=20,
     )
+
+
+def job(status: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "metadata": {"uid": "job-uid-1"},
+        "status": status or {},
+    }
 
 
 class FakeKubernetes:
@@ -212,7 +218,7 @@ def test_experiment_store_round_trip_and_guards(tmp_path: Path) -> None:
     assert store.load("exp-test-1") == record
     assert (
         json.loads((store.directory / "exp-test-1.json").read_text())["schema_version"]
-        == "1.0"
+        == "1.1"
     )
     with pytest.raises(ExperimentStoreError, match="already exists"):
         store.create(record)
@@ -249,10 +255,16 @@ def test_controller_keeps_application_and_load_lifecycles_independent(
 ) -> None:
     kubernetes = FakeKubernetes()
     store = ExperimentStore(tmp_path)
-    controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
+    times = iter((NOW, NOW + timedelta(seconds=30)))
+    controller = WorkloadController(
+        kubernetes, store, "kri:test", clock=lambda: next(times)
+    )
 
     controller.deploy_application(workload())
     record = controller.start_load(workload(), load(), "exp-test-1")
+    kubernetes.objects[("job", "kri-load-exp-test-1")] = job(
+        {"startTime": "2026-10-31T12:00:01Z", "active": 1}
+    )
     stopped = controller.stop_load("exp-test-1")
     controller.delete_application()
 
@@ -263,7 +275,11 @@ def test_controller_keeps_application_and_load_lifecycles_independent(
     assert [resource["kind"] for resource in kubernetes.applied[1]] == ["Job"]
     assert record.lifecycle_state is ExperimentState.RUNNING
     assert stopped.lifecycle_state is ExperimentState.STOPPED
-    assert stopped.end_timestamp == NOW
+    assert stopped.end_timestamp == NOW + timedelta(seconds=30)
+    assert stopped.job_uid == "job-uid-1"
+    assert stopped.job_start_timestamp == NOW + timedelta(seconds=1)
+    assert stopped.termination_reason == "UserStopped"
+    assert stopped.termination_source == "controller"
     assert kubernetes.deleted == [
         ("job", "kri-load-exp-test-1"),
         ("service", APPLICATION_NAME),
@@ -280,22 +296,58 @@ def test_controller_records_apply_failure(tmp_path: Path) -> None:
     with pytest.raises(KubernetesCommandError, match="denied"):
         controller.start_load(workload(), load(), "exp-failed")
 
-    assert store.load("exp-failed").lifecycle_state is ExperimentState.FAILED
+    failed = store.load("exp-failed")
+    assert failed.lifecycle_state is ExperimentState.FAILED
+    assert failed.termination_reason == "SubmissionFailed"
+    assert failed.termination_message == "denied"
+    assert failed.termination_source == "controller"
 
 
 @pytest.mark.parametrize(
-    ("status", "expected"),
+    ("status", "expected", "reason"),
     [
-        ({"succeeded": 1}, ExperimentState.SUCCEEDED),
-        ({"failed": 1}, ExperimentState.FAILED),
-        ({"failed": 1, "active": 1}, ExperimentState.RUNNING),
-        ({}, ExperimentState.RUNNING),
+        (
+            {
+                "startTime": "2026-10-31T12:00:01Z",
+                "completionTime": "2026-10-31T12:00:20Z",
+                "conditions": [
+                    {
+                        "type": "Complete",
+                        "status": "True",
+                        "reason": "CompletionsReached",
+                        "message": "Job completed",
+                        "lastTransitionTime": "2026-10-31T12:00:21Z",
+                    }
+                ],
+            },
+            ExperimentState.SUCCEEDED,
+            "CompletionsReached",
+        ),
+        (
+            {
+                "startTime": "2026-10-31T12:00:01Z",
+                "conditions": [
+                    {
+                        "type": "Failed",
+                        "status": "True",
+                        "reason": "BackoffLimitExceeded",
+                        "message": "Pod failed",
+                        "lastTransitionTime": "2026-10-31T12:00:22Z",
+                    }
+                ],
+            },
+            ExperimentState.FAILED,
+            "BackoffLimitExceeded",
+        ),
+        ({"failed": 1, "active": 1}, ExperimentState.RUNNING, None),
+        ({}, ExperimentState.RUNNING, None),
     ],
 )
 def test_controller_syncs_job_state(
     tmp_path: Path,
-    status: dict[str, int],
+    status: dict[str, Any],
     expected: ExperimentState,
+    reason: str | None,
 ) -> None:
     kubernetes = FakeKubernetes()
     store = ExperimentStore(tmp_path)
@@ -313,7 +365,7 @@ def test_controller_syncs_job_state(
         lifecycle_state=ExperimentState.RUNNING,
     )
     store.create(record)
-    kubernetes.objects[("job", "kri-load-exp-sync")] = {"status": status}
+    kubernetes.objects[("job", "kri-load-exp-sync")] = job(status)
 
     synced = controller.sync_load("exp-sync")
 
@@ -322,6 +374,234 @@ def test_controller_syncs_job_state(
         assert synced.end_timestamp is None
     else:
         assert synced.end_timestamp is not None
+        assert synced.termination_reason == reason
+        assert synced.termination_source == "kubernetes"
+
+
+def test_stop_preserves_a_job_that_already_completed(tmp_path: Path) -> None:
+    kubernetes = FakeKubernetes()
+    store = ExperimentStore(tmp_path)
+    controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
+    controller.start_load(workload(), load(), "exp-race")
+    kubernetes.objects[("job", "kri-load-exp-race")] = job(
+        {
+            "startTime": "2026-10-31T12:00:01Z",
+            "completionTime": "2026-10-31T12:00:20Z",
+            "conditions": [
+                {
+                    "type": "Complete",
+                    "status": "True",
+                    "lastTransitionTime": "2026-10-31T12:00:21Z",
+                }
+            ],
+        }
+    )
+
+    stopped = controller.stop_load("exp-race")
+
+    assert stopped.lifecycle_state is ExperimentState.SUCCEEDED
+    assert stopped.end_timestamp == NOW + timedelta(seconds=20)
+    assert stopped.termination_reason == "Complete"
+    assert kubernetes.deleted == [("job", "kri-load-exp-race")]
+
+
+def test_sync_waits_for_authoritative_terminal_timestamp_and_is_idempotent(
+    tmp_path: Path,
+) -> None:
+    kubernetes = FakeKubernetes()
+    store = ExperimentStore(tmp_path)
+    controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
+    record = controller.start_load(workload(), load(), "exp-pending")
+    kubernetes.objects[("job", "kri-load-exp-pending")] = job(
+        {
+            "conditions": [
+                {"type": "Complete", "status": "False"},
+                {"type": "Suspended", "status": "True"},
+            ]
+        }
+    )
+
+    first = controller.sync_load("exp-pending")
+    second = controller.sync_load("exp-pending")
+
+    assert first.lifecycle_state is ExperimentState.RUNNING
+    assert first.job_uid == "job-uid-1"
+    assert second == first
+    kubernetes.objects[("job", "kri-load-exp-pending")] = job(
+        {
+            "startTime": "2026-10-31T12:00:01Z",
+            "conditions": [{"type": "Complete", "status": "True"}],
+        }
+    )
+    assert (
+        controller.sync_load("exp-pending").lifecycle_state is ExperimentState.RUNNING
+    )
+    assert record.job_uid is None
+
+
+def test_sync_uses_failed_condition_defaults(tmp_path: Path) -> None:
+    kubernetes = FakeKubernetes()
+    store = ExperimentStore(tmp_path)
+    controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
+    controller.start_load(workload(), load(), "exp-failed-default")
+    kubernetes.objects[("job", "kri-load-exp-failed-default")] = job(
+        {
+            "startTime": "2026-10-31T12:00:01Z",
+            "conditions": [
+                {
+                    "type": "Failed",
+                    "status": "True",
+                    "reason": " ",
+                    "message": " ",
+                    "lastTransitionTime": "2026-10-31T12:00:20Z",
+                }
+            ],
+        }
+    )
+
+    failed = controller.sync_load("exp-failed-default")
+
+    assert failed.termination_reason == "Failed"
+    assert failed.termination_message is None
+
+
+@pytest.mark.parametrize(
+    ("job_value", "message"),
+    [
+        ({"metadata": [], "status": {}}, "metadata is not an object"),
+        ({"metadata": {"uid": 1}, "status": {}}, "UID is not text"),
+        (
+            {"metadata": {}, "status": {"conditions": {}}},
+            "conditions are not a list",
+        ),
+        (
+            {"metadata": {}, "status": {"conditions": [1]}},
+            "condition is not an object",
+        ),
+        (
+            {"metadata": {}, "status": {"startTime": 1}},
+            "not a timestamp string",
+        ),
+        (
+            {"metadata": {}, "status": {"startTime": "bad"}},
+            "not a valid timestamp",
+        ),
+        (
+            {"metadata": {}, "status": {"startTime": "2026-10-31T12:00:00"}},
+            "has no timezone",
+        ),
+        (
+            {
+                "metadata": {"uid": "uid"},
+                "status": {
+                    "startTime": "2026-10-31T12:00:01Z",
+                    "conditions": [
+                        {
+                            "type": "Complete",
+                            "status": "True",
+                            "reason": 1,
+                            "lastTransitionTime": "2026-10-31T12:00:20Z",
+                        }
+                    ],
+                },
+            },
+            "condition reason is not text",
+        ),
+        (
+            {
+                "metadata": {"uid": "uid"},
+                "status": {
+                    "startTime": "2026-10-31T12:00:01Z",
+                    "conditions": [
+                        {
+                            "type": "Complete",
+                            "status": "True",
+                            "message": 1,
+                            "lastTransitionTime": "2026-10-31T12:00:20Z",
+                        }
+                    ],
+                },
+            },
+            "condition message is not text",
+        ),
+        (
+            {
+                "metadata": {},
+                "status": {
+                    "startTime": "2026-10-31T12:00:01Z",
+                    "conditions": [
+                        {
+                            "type": "Complete",
+                            "status": "True",
+                            "lastTransitionTime": "2026-10-31T12:00:20Z",
+                        }
+                    ],
+                },
+            },
+            "terminal Job has no UID or start timestamp",
+        ),
+        (
+            {
+                "metadata": {"uid": "uid"},
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Complete",
+                            "status": "True",
+                            "lastTransitionTime": "2026-10-31T12:00:20Z",
+                        }
+                    ],
+                },
+            },
+            "terminal Job has no UID or start timestamp",
+        ),
+        (
+            {
+                "metadata": {},
+                "status": {
+                    "conditions": [
+                        {
+                            "type": "Complete",
+                            "status": "True",
+                            "lastTransitionTime": "2026-10-31T12:00:20Z",
+                        },
+                        {
+                            "type": "Failed",
+                            "status": "True",
+                            "lastTransitionTime": "2026-10-31T12:00:20Z",
+                        },
+                    ]
+                },
+            },
+            "conflicting terminal conditions",
+        ),
+    ],
+)
+def test_sync_rejects_unreliable_job_status(
+    tmp_path: Path,
+    job_value: dict[str, Any],
+    message: str,
+) -> None:
+    kubernetes = FakeKubernetes()
+    store = ExperimentStore(tmp_path)
+    controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
+    controller.start_load(workload(), load(), "exp-invalid-job")
+    kubernetes.objects[("job", "kri-load-exp-invalid-job")] = job_value
+
+    with pytest.raises(KubernetesCommandError, match=message):
+        controller.sync_load("exp-invalid-job")
+
+
+def test_sync_rejects_reused_job_name_with_a_different_uid(tmp_path: Path) -> None:
+    kubernetes = FakeKubernetes()
+    store = ExperimentStore(tmp_path)
+    controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
+    running = controller.start_load(workload(), load(), "exp-reused")
+    store.save(running.model_copy(update={"job_uid": "original-uid"}))
+    kubernetes.objects[("job", "kri-load-exp-reused")] = job()
+
+    with pytest.raises(KubernetesCommandError, match="UID does not match"):
+        controller.sync_load("exp-reused")
 
 
 def test_controller_rejects_invalid_or_terminal_operations(tmp_path: Path) -> None:
@@ -332,9 +612,9 @@ def test_controller_rejects_invalid_or_terminal_operations(tmp_path: Path) -> No
     store = ExperimentStore(tmp_path)
     controller = WorkloadController(kubernetes, store, "kri:test", clock=lambda: NOW)
     running = controller.start_load(workload(), load(), "exp-terminal")
+    kubernetes.objects[("job", "kri-load-exp-terminal")] = job()
     stopped = controller.stop_load(running.experiment_id)
-    with pytest.raises(WorkloadError, match="already stopped"):
-        controller.stop_load(stopped.experiment_id)
+    assert controller.stop_load(stopped.experiment_id) == stopped
     assert controller.sync_load(stopped.experiment_id) == stopped
 
     store.create(
@@ -342,6 +622,9 @@ def test_controller_rejects_invalid_or_terminal_operations(tmp_path: Path) -> No
             update={"experiment_id": "exp-bad-status"},
         )
     )
-    kubernetes.objects[("job", "kri-load-exp-bad-status")] = {"status": []}
+    kubernetes.objects[("job", "kri-load-exp-bad-status")] = {
+        "metadata": {"uid": "uid"},
+        "status": [],
+    }
     with pytest.raises(KubernetesCommandError, match="status is not an object"):
         controller.sync_load("exp-bad-status")
