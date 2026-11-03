@@ -48,6 +48,12 @@ def test_load_settings_from_environment(monkeypatch: pytest.MonkeyPatch) -> None
     assert settings.qdrant_collection == "kubernetes_knowledge"
     assert str(settings.ollama_url) == "http://ollama.test:11434/"
     assert settings.ollama_model == "test-model"
+    assert settings.ollama_model_digest is None
+    assert settings.ollama_timeout_seconds == 180
+    assert settings.llm_temperature == 0
+    assert settings.llm_seed == 42
+    assert settings.llm_context_tokens == 8192
+    assert settings.llm_max_output_tokens == 2048
     assert load_settings() is settings
 
 
@@ -90,6 +96,11 @@ def test_missing_settings_are_rejected() -> None:
     [
         ("KRI_K8S_NAMESPACE", "   "),
         ("KRI_PROMETHEUS_URL", "prometheus.test:9090"),
+        ("KRI_OLLAMA_MODEL_DIGEST", "bad"),
+        ("KRI_OLLAMA_TIMEOUT_SECONDS", "0"),
+        ("KRI_LLM_TEMPERATURE", "3"),
+        ("KRI_LLM_CONTEXT_TOKENS", "100"),
+        ("KRI_LLM_MAX_OUTPUT_TOKENS", "10"),
     ],
 )
 def test_invalid_settings_are_rejected(

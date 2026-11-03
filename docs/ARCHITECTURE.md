@@ -10,7 +10,10 @@
 6. Deterministic Python analyzer.
 7. Qdrant knowledge retrieval.
 8. LLM input package.
-9. FastAPI and React presentation.
+9. Local Qwen3 inference and independent output validation.
+10. Paired LLM-quality and recommendation-effectiveness evaluation.
+11. Artifact catalog and lineage graph.
+12. FastAPI orchestration and React presentation.
 
 ## Responsibilities
 
@@ -152,7 +155,7 @@ and nDCG@k per case and in aggregate. Evaluation failure is reported, not hidden
 or converted into a successful empty result.
 
 ### LLM Input Builder
-Constructs concise, traceable input for a future LLM.
+Constructs concise, traceable input for downstream local inference.
 
 In M9 it accepts only a fully validated M5 analysis and its matching M8
 operational-evidence package. It copies every condition, recommendation, and
@@ -168,6 +171,80 @@ store wraps the package in a second digest, uses atomic writes, refuses
 overwrites, validates content on load, and exposes a bounded inspection
 summary. Empty evidence and absent findings are represented explicitly. M9 does
 not construct free-form prompt text, invoke an LLM, or mutate any source.
+
+### Local Inference and Output Validator
+
+M12 uses an Ollama adapter dedicated to a configured local Qwen3 model. It
+accepts only an integrity-validated M9 artifact and records the exact prompt
+contract, model name and locally reported digest, inference options, UTC timing,
+input digest, and unmodified response. Inference transport and prompt assembly
+do not decide whether an answer is trustworthy.
+
+A separate deterministic validator compares the parsed candidate with the full
+M9 source. It checks schema, identities, citations, numerical values and units,
+recommendation values, retrieved-evidence membership, and uncertainty coverage.
+It emits explicit issues and never edits a candidate into compliance. Raw
+response, parsed candidate, validation report, and accepted explanation are
+separate, immutable, digest-linked artifacts; only a passing report can identify
+an accepted explanation. Explicit RAG-on/off rendering holds the complete M9
+analysis fixed and records the exact prompt digest, model digest, and options so
+M13 can construct paired trials. Offline tests replace Ollama at the adapter
+boundary.
+
+Ollama uses non-streaming JSON mode rather than treating the nested candidate
+schema as a decoding grammar; the latter proved impractically slow on CPU-only
+verification. Trust still comes from strict parsing and the independent
+validator. For finding-free inputs, the prompt supplies a fixed conservative
+summary and uncertainty framing so the model cannot turn missing findings into
+an unsupported healthy-state claim.
+
+### LLM Quality Evaluator
+
+M13 owns a fixed, independently authored and reviewed evaluation dataset and a
+paired RAG-on/RAG-off trial runner. A pair shares deterministic analysis,
+Qwen3 identity and options, prompt version, and trial plan. Its RAG-off M9 input
+explicitly contains no retrieved excerpts; it is not a post-processed RAG-on
+answer.
+
+The evaluator consumes M12 artifacts and deterministically scores validation
+success, factual/numerical support, unsupported claims, citations, finding and
+uncertainty coverage, recommendation consistency, and latency. Invalid or
+interrupted trials remain observable. Reports retain every dataset/input/output
+digest, trial identity, timestamp, metric denominator, paired difference, and
+variability. An optional model judge cannot replace fixed labels or deterministic
+acceptance metrics.
+
+### Recommendation Effectiveness Evaluator
+
+M14 turns an existing deterministic, approval-required M5 recommendation into
+a controlled experiment plan. The plan owns exact baseline/candidate
+configurations, the sole intended resource differences, load controls,
+identities, observation windows, stopping rules, rollback, cleanup, and the
+Kubernetes mutations that require explicit approval. Qwen3 output is never an
+input to applied resource values.
+
+After repeated bounded runs, a read-only evaluator integrity-checks lifecycle
+records and observations before comparing throughput, latency, throttling,
+resource consumption, errors, readiness, restarts, and target attainment.
+Versioned rules classify the result as effective, ineffective, harmful, or
+inconclusive and retain trial variation, quality limitations, confounders, and
+exact source evidence. Experiment execution, cleanup, and effect calculation
+remain distinguishable.
+
+### Artifact Catalog and Lineage
+
+M15 discovers authoritative artifacts from their configured, contained stores
+and presents a bounded catalog. Entries expose version, identity, timestamps,
+status, safe relative location, and content/source digests. Explicit parent
+references and digests—not filename similarity—form the lineage graph from an
+experiment and observation through analysis, retrieval, LLM input, inference,
+validation, and evaluation.
+
+Corrupt, duplicate, unsupported, orphaned, cyclic, or drifted artifacts remain
+visible as quality issues. Filtering, stable pagination, exact inspection, and
+lineage traversal are read-only. A persisted catalog index, if used, is atomic,
+idempotent, and completely rebuildable; authoritative artifacts remain the
+source of truth.
 
 ### FastAPI
 Exposes workload, monitoring, analysis, and knowledge APIs.
@@ -187,6 +264,25 @@ API does not hide Qdrant synchronization inside retrieval, persist transient M5
 or M8 results, recalculate metrics, invoke an LLM, apply recommendations, or
 create namespaces. Production construction validates all settings before
 creating external clients; tests inject service doubles and remain offline.
+
+In M16 the same versioned boundary extends to M12–M15 and becomes the complete
+backend workflow. Persisted operation resources coordinate long-running local
+inference, paired evaluation, and controlled experiments with bounded
+concurrency, progress, cancellation where safe, restart reconciliation,
+idempotency, and terminal result references. Operation state never substitutes
+for the immutable artifact owned by a component.
+
+Dependency readiness distinguishes Kubernetes, Prometheus, Qdrant, Ollama and
+the configured Qwen3 model, artifact stores, and index state. Artifact discovery
+and lineage APIs are bounded and paginated. Kubernetes mutation remains limited
+to explicit workload/experiment routes and approved M14 plans; inference,
+retrieval, validation, history, and evaluation routes cannot apply a resource
+change.
+
+M17 supplies the acceptance harness rather than another production component.
+It verifies the complete backend against offline fixtures and, separately,
+approved real kind, Prometheus, isolated Qdrant, and Qwen3 services. The harness
+produces a versioned acceptance report and freezes supported contracts for M18.
 
 ### React
 Provides workload controls, live graphs, and analysis views.
@@ -215,16 +311,34 @@ API command starts. Knowledge synchronization remains a separate explicit
 mutation. The React header independently checks FastAPI liveness so a missing
 API is visible before the first workflow action.
 
+M18 replaces this disposable console with the final production-oriented client
+only after M17 accepts and freezes the backend. It keeps the two-column mental
+model while adding durable operation recovery, inference and validation,
+paired-quality evaluation, recommendation-effectiveness workflows, artifact
+history, and lineage navigation. The browser uses backend operation IDs across
+refreshes, clearly separates measured, deterministic, retrieved, generated,
+and validated data, and performs no domain calculation or direct service
+access.
+
+The optimized client is deployable as static assets behind a same-origin
+reverse proxy, with runtime API configuration, accessibility, security headers,
+cache/version behavior, and external TLS/authentication integration documented.
+Kubernetes, Prometheus, Qdrant, and Ollama remain reachable only through
+FastAPI, never directly from the browser.
+
 ## Storage
 
 - Prometheus: time series.
 - Kubernetes API: live configuration and state.
-- JSON artifacts: reproducible observations and experiments.
+- JSON artifacts: reproducible experiments, observations, analyses, LLM
+  inputs/outputs, validations, evaluations, operations, lineage, and acceptance
+  reports.
 - Markdown/JSON: canonical knowledge.
 - Qdrant: embeddings and searchable knowledge payloads.
 
-Qdrant is derived and rebuildable; `knowledge/manifest.json` and registered
-Markdown remain authoritative.
+Qdrant and any artifact-catalog index are derived and rebuildable;
+`knowledge/manifest.json`, registered Markdown, and immutable owning-component
+artifacts remain authoritative.
 
 No ClickHouse, crawler, or additional database.
 
@@ -235,5 +349,8 @@ No ClickHouse, crawler, or additional database.
   supported only as a local-development convenience.
 - Configuration validation happens before a component contacts an external
   service.
-- Python collectors, observation building, analysis, retrieval, API, and
-  frontend behavior remain outside M2.
+- Blocking external clients remain behind injectable component boundaries so
+  offline verification does not require Kubernetes, Prometheus, Qdrant, Ollama,
+  model downloads, or a browser.
+- M12–M17 backend contracts and verification must be accepted before M18 adds
+  the final frontend; M18 cannot become an alternate backend implementation.

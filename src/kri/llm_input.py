@@ -418,6 +418,11 @@ class LLMInputStore:
         except (OSError, ValidationError) as error:
             raise LLMInputStoreError(f"invalid LLM input artifact: {error}") from error
 
+    def load_artifact(self, package_id: str) -> LLMInputArtifact:
+        """Load and integrity-check the complete M9 persistence envelope."""
+
+        return self._load_artifact(package_id)
+
     def load(self, package_id: str) -> LLMInputPackage:
         return self._load_artifact(package_id).package
 

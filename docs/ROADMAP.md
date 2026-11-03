@@ -14,6 +14,19 @@ M8 — RAG retrieval and evaluation.
 M9 — Validated LLM input builder.
 M10 — FastAPI integration.
 M11 — React two-panel interface.
+M12 — Local Qwen3 inference and independent output validation.
+M13 — Reproducible RAG-on/off LLM quality evaluation.
+M14 — Evidence-based resource recommendation effectiveness.
+M15 — Experiment history, artifact discovery, and data lineage.
+M16 — Complete FastAPI backend workflow integration.
+M17 — End-to-end reliability, evaluation, and backend acceptance.
+M18 — Final production-oriented React UI.
+
+M0–M11 are the completed foundation and their acceptance history is preserved
+below. M12–M17 form a mandatory backend-completion sequence. M18 must not begin
+until every M12–M17 criterion has verified evidence recorded in
+`docs/PROGRESS.md`; frontend work must not be used to hide or relocate an
+unfinished backend responsibility.
 
 ## M0 Acceptance Criteria
 
@@ -336,6 +349,220 @@ M11 — React two-panel interface.
   structured failure display. TypeScript checking, frontend tests, and a
   production build are part of `make verify`.
 
+## M12 Acceptance Criteria
+
+- A local inference adapter consumes only a validated M9 `LLMInputArtifact`,
+  invokes a configured Qwen3 model through Ollama, and records the exact model
+  name, locally reported model digest, inference options, UTC timing, input
+  package identity/digest, and raw response.
+- The prompt and structured output contracts are versioned. They require the
+  model to explain existing M5 findings and recommendations, cite supplied
+  analysis/evidence IDs, preserve uncertainty, and refrain from inventing
+  measurements, resource values, Kubernetes mutations, or new diagnoses.
+- Timeouts, unavailable Ollama, missing or mismatched models, malformed model
+  responses, context overflow, and interrupted generation fail explicitly;
+  none is represented as an accepted explanation.
+- A deterministic validator independent of the inference adapter validates the
+  parsed schema, source identities, citations, numerical claims and units,
+  recommendation values, evidence membership, and required uncertainty
+  coverage against the complete M9 input. It reports every rejected or
+  unsupported claim instead of repairing it.
+- Raw model response, parsed candidate, validation report, and accepted output
+  remain distinct. Immutable, digest-protected artifacts bind all stages and
+  refuse overwrite or source drift; an invalid candidate remains inspectable
+  but cannot be promoted to accepted output.
+- Offline tests use a deterministic inference double and cover valid output,
+  hallucinated IDs, altered numbers/units, omitted uncertainty, malformed JSON,
+  dependency failure, timeout, digest corruption, and immutable conflicts
+  without downloading or running a model.
+- Opt-in real verification uses a documented pinned Qwen3 model identity and a
+  retained real M9 package, proves both successful generation and independent
+  validation, and reports latency and limitations without claiming bitwise
+  generation determinism.
+
+## M13 Acceptance Criteria
+
+- A fixed, versioned, independently authored and reviewed evaluation dataset
+  defines cases, expected facts, required uncertainties, allowed
+  recommendations, citation judgments, and exclusion rules without being
+  derived from the evaluated outputs.
+- Each evaluation uses paired RAG-on and RAG-off M9 inputs built from the same
+  observation, M5 analysis, prompt version, Qwen3 model/digest, inference
+  settings, and trial plan; the only intended difference is the declared
+  retrieval evidence.
+- RAG-off is explicit and preserves the deterministic analysis while supplying
+  no knowledge excerpts. It is never simulated by silently dropping citations
+  from a RAG-on result.
+- Evaluation records every raw response and M12 validation artifact, exact
+  input/dataset digests, trial and pair IDs, timestamps, environment identity,
+  latency, and failure. Interrupted or invalid trials remain in denominators.
+- Deterministic metrics cover validation success, supported numerical claims,
+  unsupported-claim rate, citation precision and recall, finding and
+  uncertainty coverage, recommendation consistency, and generation latency.
+  Paired aggregate differences include sample counts and variability; a
+  model-based judge may be supplementary but is never the sole acceptance
+  oracle.
+- A reproducible report states whether RAG improved, regressed, or produced an
+  inconclusive result for each quality dimension. It does not cherry-pick
+  trials, tune labels from results, or collapse missing/invalid output to zero.
+- Offline tests reproduce scoring from recorded artifacts. Opt-in real Qwen3
+  evaluation runs the fixed plan and can be repeated without overwriting prior
+  results or changing the reviewed dataset.
+
+## M14 Acceptance Criteria
+
+- A versioned effectiveness plan converts only an approval-required M5
+  recommendation into an explicit candidate workload configuration; model
+  prose can explain but cannot create or change an applied value.
+- Before mutation, a read-only preflight records cluster/context, namespace,
+  workload identity, image identity, baseline configuration, candidate
+  configuration, exact Kubernetes mutations, load plan, observation windows,
+  stop conditions, rollback, cleanup, and artifact destinations.
+- Baseline and candidate runs use the same declared workload and load controls
+  except for the approved resource changes. Each bounded Kubernetes mutation
+  requires explicit user approval and remains limited to project-owned,
+  disposable resources.
+- Repeated trials persist lifecycle-reconciled experiment records and
+  identity-matched observations. The evaluator verifies source digests,
+  timestamps, comparable windows, sample sufficiency, workload stability, and
+  declared confounders before calculating an effect.
+- Effectiveness reports compare throughput, p95 latency, throttling, CPU,
+  memory, error rate, readiness/restarts, and target attainment with absolute
+  and relative differences, trial variability, data-quality limitations, and
+  exact evidence references.
+- A recommendation is classified as effective, ineffective, harmful, or
+  inconclusive using versioned decision rules that include target-condition
+  improvement and regression guardrails. Missing or incomparable data yields
+  `inconclusive`, never a favorable result.
+- Cleanup and rollback are verified separately from outcome evaluation. No
+  experiment automatically changes the long-lived workload, applies an LLM
+  patch, or treats one successful run as general production proof.
+- Offline tests replay fixed records for every classification and integrity
+  failure. Real-cluster acceptance uses an approved bounded experiment and
+  saves a reproducible, digest-bound report.
+
+## M15 Acceptance Criteria
+
+- A read-only artifact catalog discovers existing versioned experiment,
+  observation, analysis, retrieval, LLM-input, inference/validation,
+  RAG-evaluation, and recommendation-effectiveness artifacts under configured,
+  contained roots without changing the authoritative files.
+- Catalog entries expose artifact type/schema, stable identity, UTC times,
+  workload/experiment/observation identity, terminal or validation status,
+  source and content digests, and safe repository-relative location. Invalid,
+  unsupported, duplicate, corrupt, and orphaned artifacts remain visible as
+  structured quality issues.
+- Explicit parent references and digests form a directed lineage graph from
+  workload experiment and raw observation through deterministic analysis,
+  retrieval, M9 input, M12 output, and M13/M14 results. Broken links, cycles,
+  source drift, and incompatible schema versions fail validation rather than
+  being inferred by filename.
+- Bounded, deterministic discovery supports filtering, sorting, pagination,
+  exact lookup, lineage traversal, and artifact inspection without loading
+  unbounded payloads or exposing paths outside configured roots.
+- Any persisted catalog index is versioned, atomically replaceable, and fully
+  rebuildable from authoritative artifacts. It is a discovery aid, not a new
+  source of truth, and repeated synchronization is idempotent.
+- Tests cover mixed historical schemas (including experiment 1.0/1.1), valid
+  and broken lineage, corruption, unsafe paths, pagination stability, rebuild,
+  and idempotent synchronization using fixture artifacts only.
+
+## M16 Acceptance Criteria
+
+- The versioned FastAPI service exposes the complete M1–M15 workflow while
+  preserving component ownership: workload and experiments, metrics,
+  observations, analysis, retrieval, LLM-input construction, local inference,
+  independent validation, RAG evaluation, recommendation-effectiveness plans
+  and reports, artifact discovery, and lineage inspection.
+- Long-running inference, evaluation, and controlled experiment workflows use
+  versioned operation resources with stable IDs, queued/running/terminal
+  states, UTC timestamps, progress, result references, failure details,
+  idempotency behavior, bounded concurrency, timeouts, and safe cancellation.
+  Restart reconciliation never invents success or loses a terminal result.
+- All accepted outputs are loaded from or persisted to their owning immutable
+  stores. API orchestration passes exact versioned contracts and digests across
+  stages; it does not recalculate analysis, hide Qdrant synchronization, trust
+  unvalidated model output, or use browser state as authoritative workflow
+  state.
+- Read and mutation routes are unmistakable. Kubernetes changes remain behind
+  explicit workload/experiment operations and M14 approval evidence; no LLM,
+  retrieval, history, or validation route can apply a recommendation.
+- Dependency health and readiness distinguish Kubernetes, Prometheus, Qdrant,
+  Ollama/model, artifact-store, and index availability. Structured errors are
+  actionable and preserve partial-operation evidence without returning a
+  successful partial result.
+- Discovery endpoints provide bounded filters, stable pagination, exact
+  artifact inspection, and lineage traversal. OpenAPI documents all schemas,
+  lifecycle states, error objects, and safety boundaries.
+- Offline integration tests cover every route, safety boundary, idempotency,
+  cancellation, restart reconciliation, dependency failure, concurrency limit,
+  artifact integrity failure, and OpenAPI using injected doubles and no
+  external services.
+
+## M17 Acceptance Criteria
+
+- One documented backend acceptance command verifies formatting, linting,
+  strict typing, branch-covered offline tests, contract/schema compatibility,
+  artifact replay, and deterministic evaluation before any opt-in real-service
+  suite runs.
+- The approved real-service suite exercises the complete backend with an
+  existing kind cluster, project Prometheus, an isolated Qdrant collection,
+  local Qwen3, and contained artifact roots: bounded load, collection, M4→M9,
+  M12 validation, M13 paired evaluation, M14 effectiveness evaluation, M15
+  lineage, and M16 API creation/retrieval of resulting artifacts.
+- The suite records exact service, cluster, image, model, dataset, index,
+  policy, prompt, validator, and contract versions plus UTC timestamps and
+  digests. It distinguishes fresh real evidence from retained or mocked data.
+- Reliability tests cover unavailable and recovering dependencies, timeouts,
+  malformed responses, interrupted/restarted operations, cancellation,
+  idempotent retries, concurrent requests, terminal-state stability, and
+  cleanup. Failures remain inspectable and do not corrupt accepted artifacts.
+- Backend safety checks cover path containment, bounded request sizes and
+  pagination, CORS/configuration defaults, secret-free logs/artifacts, explicit
+  mutation approval, and prevention of unvalidated-output or LLM-driven
+  Kubernetes changes.
+- A versioned backend acceptance report lists every criterion, command, result,
+  evidence artifact, limitation, and unresolved risk. A failed, skipped, or
+  inconclusive mandatory check prevents backend acceptance.
+- M17 freezes the supported API and artifact contracts for M18. M18 is not
+  started and the backend is not called accepted until all mandatory M12–M17
+  evidence is present in `docs/PROGRESS.md` and cleanup has been verified.
+
+## M18 Acceptance Criteria
+
+- The disposable M11 console is replaced by a production-oriented React and
+  TypeScript application that consumes only the frozen M16/M17 API contracts
+  and retains the established two-column workload/evidence mental model.
+- The interface covers the complete accepted workflow: service readiness,
+  workload and load lifecycle, live metrics, artifact discovery, observation
+  and analysis, RAG, LLM-input inspection, Qwen3 inference/validation, paired
+  quality evaluation, recommendation-effectiveness experiments, history, and
+  lineage.
+- Long operations survive navigation and refresh through backend operation IDs;
+  the UI shows progress, timestamps, cancellation availability, terminal
+  reasons, retry semantics, and dependency-specific recovery guidance without
+  inventing state.
+- Raw measurements, deterministic findings, retrieved evidence, model claims,
+  validator decisions, uncertainties, and approved resource mutations are
+  visually distinct. Destructive or Kubernetes-mutating actions require clear
+  confirmation and show exact scope; unvalidated output cannot be presented as
+  accepted advice.
+- The UI is responsive and keyboard accessible, uses semantic labels and focus
+  management, supports empty/loading/partial/error states, and renders bounded
+  large histories and graphs without moving analysis into the browser.
+- Runtime API configuration, same-origin deployment, content security policy,
+  asset caching, version display, and reverse-proxy/TLS/authentication
+  integration boundaries are documented. A reproducible optimized build
+  contains no development proxy assumptions or secrets.
+- Component and browser end-to-end tests cover the principal workflow,
+  refresh/recovery, failed dependencies, invalid model output, approval gates,
+  lineage navigation, accessibility, and responsive layouts against the
+  accepted backend. Frontend type checking, tests, accessibility checks, and
+  production build are part of `make verify`.
+- Final real-browser acceptance uses M17 artifacts and an approved bounded
+  experiment, records screenshots or machine-readable results plus exact build
+  identity, and updates product, operator, deployment, and progress documents.
+
 ## Completion Rules
 
 Each milestone must:
@@ -347,11 +574,18 @@ Each milestone must:
 
 Do not implement future milestones automatically.
 
+M12–M17 must be completed sequentially before M18 begins. A planned contract,
+offline mock, retained artifact, or skipped real-service check is not a
+substitute for the real verification explicitly required by a milestone.
+
 ## Final Acceptance
 
-The user can configure a disposable workload, generate real
-Kubernetes metrics, inspect graphs, collect observations,
-run deterministic analysis, retrieve RAG evidence, and inspect
-the final LLM input package.
+The user can configure a disposable workload, generate and inspect real
+Kubernetes metrics, collect replayable observations, run deterministic
+analysis, retrieve traceable evidence, generate and independently validate a
+local Qwen3 explanation, compare RAG-on/off quality, evaluate resource
+recommendations through approved controlled experiments, discover complete
+artifact lineage, and operate the workflow through an accepted FastAPI backend
+and production-oriented React interface.
 
-LLM inference and remediation are not included.
+No model output or recommendation is applied autonomously.

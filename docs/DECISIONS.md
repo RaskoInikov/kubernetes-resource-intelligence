@@ -112,3 +112,60 @@ analysis and M8 evidence directly and require clients to pass those exact
 contracts forward. Query only an already synchronized Qdrant index. Use typed
 422/404/409/502 failures, dependency-injected services for offline testing, and
 no implicit LLM inference or remediation.
+
+## D019 — Local Inference Trust Boundary
+
+Fulfill D002 with a configured Qwen3 model run locally through Ollama, using
+only a validated M9 artifact. Persist exact model identity, options, prompt
+contract, timings, and raw output. Keep inference separate from a deterministic
+validator that checks all identities, citations, numerical claims,
+recommendation values, and uncertainty coverage. Preserve rejected output;
+never repair or promote it.
+
+## D020 — Paired RAG Evaluation
+
+Measure LLM benefit with fixed, independently reviewed, paired RAG-on/RAG-off
+cases. Hold analysis, model identity/settings, prompt, and trial plan constant;
+retain invalid trials in denominators and report supported claims, citations,
+coverage, recommendation consistency, latency, and variability. A model judge
+may supplement but cannot replace deterministic metrics and reviewed labels.
+
+## D021 — Recommendation Effectiveness
+
+Apply only deterministic M5 resource values in explicitly approved, bounded
+baseline/candidate experiments. Require a mutation preflight, comparable
+repeated trials, lifecycle and observation integrity, regression guardrails,
+and verified rollback/cleanup. Classify missing or incomparable evidence as
+inconclusive; LLM prose cannot supply an applied value.
+
+## D022 — Artifact Lineage
+
+Keep owning-component artifacts authoritative and build discovery from their
+explicit IDs, parent references, and canonical digests. Treat any catalog index
+as rebuildable derived state. Report corruption, orphaning, cycles, and source
+drift rather than inferring lineage from filenames or hiding invalid artifacts.
+
+## D023 — Durable Backend Operations
+
+Represent long inference, evaluation, and experiment workflows as versioned
+FastAPI operation resources with bounded concurrency, idempotency, timestamps,
+progress, cancellation semantics, restart reconciliation, and immutable result
+references. Operation state coordinates work but does not replace result
+artifacts or weaken Kubernetes mutation approval.
+
+## D024 — Backend Acceptance Gate
+
+Preserve D007 as the completed first-phase boundary and extend final product
+scope through M18. Complete and verify M12–M17 before M18 begins. Backend
+acceptance requires both offline checks and the explicitly required real kind,
+Prometheus, isolated Qdrant, and local Qwen3 evidence. Freeze accepted API and
+artifact contracts for the final UI; a skipped or inconclusive mandatory check
+blocks acceptance.
+
+## D025 — Final UI Boundary
+
+Build M18 as a production-oriented static React client over the accepted
+FastAPI contracts. The browser owns presentation and interaction state only;
+it never contacts Kubernetes, Prometheus, Qdrant, or Ollama directly and never
+calculates analysis, validation, or experiment effects. TLS and identity policy
+remain deployment-platform boundaries unless later scope explicitly changes.

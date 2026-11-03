@@ -244,6 +244,118 @@ Loading rejects any package-content change, including altered numbers,
 references, risks, uncertainty, or evidence text. Persistence refuses overwrite
 and inspection returns counts and identities rather than the full LLM payload.
 
+## M12 Inference Contracts
+
+### InferenceRunArtifact
+
+- Safe run ID, schema/prompt/adapter versions, UTC requested/start/end times,
+  and terminal status
+- Exact M9 package ID and digest plus canonical digest of the complete input
+- Ollama endpoint identity, exact Qwen3 model name and locally reported digest,
+  context limit, and complete bounded inference options
+- Exact rendered-message digest, raw response, response digest, token/timing
+  metadata when reported, and explicit transport/model failure
+- Parsed candidate as a distinct optional value; parse failure never changes
+  the raw response or becomes an accepted explanation
+- Explicit RAG mode (`on` or `off`) and a canonical prompt digest. RAG-off keeps
+  the complete M9 deterministic analysis but excludes knowledge excerpts from
+  the rendered prompt.
+
+### LLMOutputCandidate and ValidationReport
+
+- Candidate schema version and source run/package identities
+- Explanation sections tied to exact M5 condition/recommendation IDs
+- Structured numerical claims with value, unit, and statistic/evidence ID
+- Structured citations to supplied analysis evidence or M8 knowledge chunks
+- Explicit uncertainty references and a statement that resource changes require
+  approval
+- Validator version, validated source digests, UTC validation time, pass/fail
+  status, and deterministically ordered issues
+- Issues identify unsupported IDs, values, units, recommendations, citations,
+  missing uncertainty, schema violations, and source mismatch without rewriting
+  the candidate
+- Accepted output exists only when the complete report passes and retains the
+  candidate and validation-report digests
+
+M12 records Ollama's exact lowercase 64-character model digest from
+`/api/tags`. Generated prose cannot contain undeclared numbers: every numerical
+claim must be structured and exactly match its referenced M5 statistic value
+and unit. Condition and recommendation citations must exactly cover their M5
+analysis evidence; knowledge citations are allowed only for supplied M9 chunks
+in RAG-on mode. Every M9 uncertainty ID and source text must be preserved.
+
+Accepted, rejected, malformed, interrupted, and dependency-failed attempts are
+stored as immutable digest envelopes. Rejected candidates remain inspectable;
+only an accepted status can carry an `AcceptedLLMOutput` digest binding.
+
+## Planned M13–M17 Contracts
+
+The following contracts remain planned. Their concrete schema versions are
+introduced by their owning milestones without changing historical artifacts.
+
+### LLMQualityDataset and EvaluationReport
+
+- Semantic dataset version, canonical digest, author, independent reviewer,
+  review timestamp, case provenance, exclusion rules, and leakage notes
+- Cases identify source M5 analysis, paired RAG-on/RAG-off M9 inputs, expected
+  facts/uncertainties/recommendations, allowed citations, trial count, and fixed
+  model/prompt settings
+- Trial records retain pair/configuration IDs, M9/M12 artifact digests, UTC
+  times, status/failure, latency, and every scoring denominator
+- Per-trial and aggregate validation success, supported numerical claims,
+  unsupported-claim rate, citation precision/recall, finding/uncertainty
+  coverage, recommendation consistency, and generation latency
+- Paired absolute/relative differences, variability, sample and failure counts,
+  thresholds, and improved/regressed/inconclusive outcomes per dimension
+
+### RecommendationEffectivenessPlan and Report
+
+- Plan/policy version, safe plan ID, source analysis/recommendation/evidence
+  identities and digests, creator and UTC time
+- Cluster/context, namespace, workload/image identity, exact baseline and
+  candidate configurations, intended differences, repeated load plan,
+  observation windows, stop conditions, rollback, cleanup, and artifact roots
+- Exact proposed Kubernetes mutations and separate explicit-approval record;
+  no model-generated value is accepted
+- Trial references bind lifecycle-reconciled ExperimentRecords and immutable
+  Observations with roles, repetitions, timestamps, and source digests
+- Report records comparability/quality checks, confounders, per-trial and
+  aggregate throughput, p95 latency, throttling, CPU, memory, errors,
+  readiness/restarts, target attainment, absolute/relative effects and
+  variability
+- Versioned guardrails yield `effective`, `ineffective`, `harmful`, or
+  `inconclusive`; rollback and cleanup status are separate from the outcome
+
+### ArtifactCatalog and LineageGraph
+
+- Catalog schema/build version, safe catalog ID, UTC build time, configured-root
+  identities, source scan digest, and deterministic entry ordering
+- Entries contain artifact type/schema, stable ID, UTC times, status, workload
+  and experiment identities when applicable, content/source digests, and a safe
+  root-relative locator
+- Structured issues retain unsupported, invalid, corrupt, duplicate, orphaned,
+  drifted, or unsafe artifacts instead of silently omitting them
+- Lineage nodes reference catalog entries; directed edges contain an explicit
+  relationship type, parent ID, expected parent digest, and validation status
+- Graph validation rejects cycles and reports broken or incompatible links;
+  filenames and timestamps alone never establish a relationship
+- List/query contracts use bounded page size, opaque or stable continuation,
+  deterministic filters/sort, total-count semantics, and bounded summaries
+
+### BackendOperation and AcceptanceReport
+
+- Operation schema/version, safe operation and idempotency IDs, operation type,
+  queued/running/succeeded/failed/cancelled status, UTC lifecycle timestamps,
+  progress, input digests, result artifact references, and structured failure
+- Bounded-concurrency, timeout, cancellation, retry, and restart-reconciliation
+  metadata; terminal state and immutable result references cannot be rewritten
+- Acceptance report schema/suite version, environment and dependency identities,
+  UTC interval, exact commands/checks, offline/real/retained evidence class,
+  artifact digests, pass/fail/skip result, limitations, cleanup status, and
+  overall backend-acceptance decision
+- A skipped, failed, or inconclusive mandatory M12–M17 check cannot produce an
+  accepted backend decision
+
 ## M10 HTTP Requests
 - Every route is under `/api/v1`; `/healthz` is the unversioned process-health
   exception.
@@ -285,3 +397,11 @@ resource change.
 - Never let the LLM input builder recalculate deterministic values, suppress a
   reported uncertainty, invent missing retrieval evidence, or hide bounded
   evidence omissions.
+- Never treat raw or merely parseable LLM output as validated, repair a failed
+  candidate silently, or allow an LLM value to become a Kubernetes mutation.
+- Never compare RAG configurations with different deterministic inputs or hide
+  invalid trials from evaluation denominators.
+- Never report a recommendation as effective from incomparable, missing, or
+  unstable experiment evidence.
+- Never infer lineage from filenames, let a derived catalog replace an owning
+  artifact, or expose a path outside configured artifact roots.

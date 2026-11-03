@@ -1,7 +1,8 @@
 # Project Progress
 
 ## Current milestone
-M11 — React two-panel testing interface (complete, offline verified)
+M12 — Local Qwen3 inference and independent output validation (complete,
+offline and real-service verified)
 
 ## Completed
 - Git repository initialized.
@@ -116,6 +117,39 @@ M11 — React two-panel testing interface (complete, offline verified)
   lifecycle or immutable conflicts, invalid analysis/input, and external
   dependency failures. Qdrant synchronization and LLM inference remain outside
   all API read and analysis routes.
+- The documentation roadmap now extends through M18. M12–M17 are a mandatory
+  backend gate covering local Qwen3 inference and independent validation,
+  paired RAG evaluation, recommendation-effectiveness experiments, artifact
+  lineage, complete FastAPI orchestration, and real-service backend acceptance;
+  M18 is the final production-oriented React UI. Planned contracts and safety
+  boundaries preserve all completed M0–M11 responsibilities and artifacts.
+- M12 adds versioned contracts for explicit RAG mode, bounded inference
+  options, numerical claims, citations, problem/recommendation explanations,
+  preserved uncertainties, validation issues, accepted-output bindings,
+  failures, immutable run envelopes, and bounded inspection summaries.
+- The local inference runner consumes only a digest-valid M9 artifact, pins the
+  configured Qwen3 model to Ollama's exact `/api/tags` digest, renders and
+  digests deterministic messages, uses non-streaming JSON generation, and
+  records options, UTC timing, raw response, Ollama counters, candidate,
+  validation, and terminal status without contacting Kubernetes, Prometheus,
+  or Qdrant.
+- RAG-on and RAG-off rendering are explicit. Both retain identical M9
+  deterministic findings; off mode excludes knowledge excerpts, while on mode
+  requires at least one excerpt. Exact mode, source digest, prompt digest,
+  model digest, seed, temperature, context, and output bound support future M13
+  paired evaluation without implementing its dataset or scoring.
+- The independent validator never repairs output. It requires complete ordered
+  condition/recommendation/uncertainty coverage, exact numerical values and
+  units, exact M5 evidence citations, valid RAG-on knowledge citations, exact
+  recommendation quantities, unique claims/citations, and no undeclared
+  numbers or unfilled prose sentinels. Only a passing report can create an
+  accepted-output digest binding.
+- Accepted, rejected, malformed, incomplete, timed-out, and dependency-failed
+  runs persist immutably and refuse overwrite or digest drift. Offline tests
+  cover successful on/off runs plus model mismatch, missing model/evidence,
+  transport/schema/timeout equivalents, malformed output, altered claims,
+  unknown and duplicate citations, missing uncertainty, invalid lifecycle
+  states, artifact corruption, and store failures.
 
 ## Verification
 
@@ -432,21 +466,63 @@ M11 — React two-panel testing interface (complete, offline verified)
 - Post-run `make verify` passed on 2026-11-03 with Ruff, strict mypy, 303 Python
   tests at 100% statement and branch coverage, ten Vitest tests, strict
   TypeScript, and a Vite production build.
+- M12–M18 planning was documented on 2026-11-03 without implementing new
+  functionality. A consistency check confirmed exactly one roadmap acceptance
+  section for every M0–M18 milestone and one decision entry for every D001–D025,
+  while distinguishing the completed M0–M11 first phase from final M18 scope.
+  `git diff --check` passed.
+- Post-planning `make verify` passed from the project virtual environment with
+  Ruff, strict mypy, 303 Python tests at 100% statement and branch coverage, ten
+  Vitest tests, strict TypeScript, and a Vite production build. No Kubernetes,
+  Prometheus, Qdrant, Ollama, or saved-artifact mutation was performed.
+- Real M12 verification accepted run `m12-qwen3-4b-rag-off-20261103h` against
+  retained real package `llm-input-ui-20261102151015`. It pinned local
+  `qwen3:4b` to digest
+  `359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7`,
+  used temperature zero, seed 42, an 8,192-token context, a 1,024-token output
+  bound, disabled thinking, and explicit RAG-off mode.
+- The accepted request ran from `2026-11-03T08:55:12.908435Z` through
+  `2026-11-03T08:57:57.464769Z`. Ollama reported 1,165 prompt tokens, 563 output
+  tokens, and 164.513 seconds. The candidate preserved all five real
+  uncertainties, returned no invented conditions or recommendations, and
+  passed independent validation with zero issues. Prompt, raw response,
+  candidate, validation, and complete artifact digests are preserved under
+  artifact digest
+  `148e2a36f449aab149819dd4e27065091669b8f42abcb6884f6a3f5dc3dd6bec`.
+- Real rejected/failed artifacts also demonstrate two bounded dependency
+  timeouts, token-limit interruption, evidence-object echo, unfilled prose, and
+  undeclared timestamp claims. Those results drove JSON-mode generation,
+  explicit evidence/template separation, sentinel validation, and conservative
+  finding-free output; none was repaired or promoted. The timed-out local
+  runner was explicitly stopped after it continued consuming CPU.
+- Post-M12 `make verify` passed on 2026-11-03 with Ruff, strict mypy, 317 Python
+  tests at 100% statement and branch coverage, ten Vitest tests, strict
+  TypeScript, and a Vite production build. The suite remained offline; the
+  separate real verification contacted only local Ollama and wrote immutable
+  result artifacts.
 
 ## Next
-The planned M0–M11 first-version scope is complete. Real browser-to-service
-verification remains an explicit follow-up operation.
+M0–M12 are complete. Implement M13's fixed, independently reviewed paired
+RAG-on/off quality evaluation. M13–M17 must complete and verify all remaining
+backend, ML, retrieval, experiment, lineage, API, and reliability work before
+M18 begins.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- LLM inference is not implemented. M10 and M11 are loopback-only development
+- M13–M18 are planned but not implemented. M10 and M11 are loopback-only development
   tools and do not provide production authentication, authorization, TLS, or
   deployment packaging.
 - M11 has offline component coverage and a production build, but has not yet
   been exercised in a browser against live Kubernetes, Prometheus, and Qdrant
   services.
+- Real M12 acceptance used a finding-free retained package. Detected-condition
+  and recommendation explanations are exhaustively covered with deterministic
+  offline model responses, but a real Qwen3 run over the larger six-condition,
+  two-recommendation package exceeded the 600-second CPU-only request bound.
+  M13 must measure this latency and validate real finding-bearing trials rather
+  than treating the finding-free acceptance run as quality evidence.
 - Existing schema 1.0 experiment artifacts cannot be retroactively assigned
   terminal state or provenance after their Kubernetes Jobs have disappeared;
   they remain readable and their missing lifecycle evidence stays explicit.

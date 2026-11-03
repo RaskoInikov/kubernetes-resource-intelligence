@@ -9,8 +9,12 @@ analysis and bounded recommendations; M6 adds canonical verified knowledge; and
 M7 builds a derived Qdrant index with read-only knowledge inspection and
 retrieval. M8 retrieves and evaluates analysis-grounded operational evidence;
 M9 builds an integrity-checked, inspectable LLM handoff without invoking a
-model; M10 exposes the complete pipeline through FastAPI; and M11 adds a small
-React and TypeScript testing console.
+model; M10 exposes the complete pipeline through FastAPI; M11 adds a small
+React and TypeScript testing console; and M12 adds local Qwen3 inference with
+independent output validation. The planned M13–M17 backend sequence adds paired
+RAG quality evaluation, recommendation-effectiveness experiments, artifact
+lineage, complete API orchestration, and real-service backend acceptance. Only
+after that gate does M18 deliver the final production-oriented React interface.
 
 ## Requirements
 
@@ -70,8 +74,8 @@ separately, as required by `AGENTS.md`.
 - `web/` — disposable React and TypeScript pipeline testing interface.
 - `docs/` — product, architecture, contracts, roadmap, and progress.
 
-See `docs/ROADMAP.md` for milestone scope. Do not implement later milestones
-as part of repository setup.
+See `docs/ROADMAP.md` for milestone scope and its mandatory M12–M17 backend gate
+before M18. Implement only the explicitly requested milestone.
 
 ## M1 workload operations
 
@@ -535,6 +539,58 @@ Kubernetes Job start/end times, Job UID, final state, termination reason/source,
 and the exact Job condition message. Reconciliation failures remain visible and
 do not invent a terminal state.
 
-This UI is intentionally local and disposable. It does not synchronize Qdrant,
-invoke an LLM, apply recommendations, add authentication, or provide production
-deployment packaging.
+This M11 UI is intentionally local and disposable. It does not synchronize
+Qdrant, invoke an LLM, apply recommendations, add authentication, or provide
+production deployment packaging. Those current limitations are preserved until
+their owning M12–M18 milestones are implemented and verified; the roadmap does
+not imply that the existing client or API already provides them.
+
+## M12–M18 completion sequence
+
+M12 implements local inference and independent validation. M13–M17 remain the
+planned paired RAG evaluation, controlled recommendation-effectiveness
+experiments, artifact discovery and lineage, full FastAPI orchestration, and
+backend acceptance sequence. M18 starts only after that evidence is recorded
+and builds the final React client over frozen backend contracts. See
+`docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md` for product
+boundaries, component ownership, and acceptance criteria. No M13–M18
+functionality is implied by M12.
+
+## M12 local Qwen3 inference
+
+M12 consumes an integrity-checked M9 artifact, renders a deterministic
+source-bounded prompt, calls only the configured local Qwen3 model through
+Ollama, and persists the complete run under `results/inference/`. Raw output,
+the parsed candidate, independent validation report, and accepted-output digest
+remain distinct. Invalid output is retained as rejected or failed and is never
+silently repaired.
+
+Configure the exact model identity and bounded generation options in `.env`:
+
+```bash
+KRI_OLLAMA_MODEL=qwen3:4b
+KRI_OLLAMA_MODEL_DIGEST=<full lowercase digest from /api/tags>
+KRI_OLLAMA_TIMEOUT_SECONDS=180
+KRI_LLM_TEMPERATURE=0
+KRI_LLM_SEED=42
+KRI_LLM_CONTEXT_TOKENS=8192
+KRI_LLM_MAX_OUTPUT_TOKENS=2048
+```
+
+Run the opt-in verifier with a unique run ID and a retained M9 package:
+
+```bash
+python scripts/verify_m12_inference.py \
+  --package-directory results/llm-inputs \
+  --package-id llm-input-m10-api-20261101 \
+  --output-directory results/m12-verification \
+  --run-id m12-qwen3-rag-on \
+  --rag-mode on
+```
+
+`--rag-mode off` deterministically excludes knowledge excerpts while preserving
+the same M9 measurements, findings, recommendations, and uncertainties. Each
+run records its mode and prompt digest, enabling M13 to build paired evaluation
+plans. M12 itself does not implement the M13 reviewed dataset or comparative
+quality scoring. Inference is read-only with respect to Kubernetes, Prometheus,
+and Qdrant; only the named local result artifact is created.

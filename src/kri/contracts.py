@@ -1334,6 +1334,281 @@ class LLMInputSummary(ContractModel):
     package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
 
 
+class RAGMode(StrEnum):
+    """Explicit knowledge mode used for one reproducible inference run."""
+
+    ON = "on"
+    OFF = "off"
+
+
+class InferenceStatus(StrEnum):
+    """Trust state of a completed local inference attempt."""
+
+    ACCEPTED = "accepted"
+    REJECTED = "rejected"
+    FAILED = "failed"
+
+
+class CitationSource(StrEnum):
+    """M9 source class cited by generated output."""
+
+    ANALYSIS_EVIDENCE = "analysis_evidence"
+    KNOWLEDGE_CHUNK = "knowledge_chunk"
+
+
+class InferenceOptions(ContractModel):
+    """Complete bounded Ollama options recorded for reproducibility."""
+
+    temperature: float = Field(default=0.0, ge=0, le=2, allow_inf_nan=False)
+    seed: int = Field(default=42, ge=0, le=2_147_483_647)
+    context_tokens: int = Field(default=8192, ge=1024, le=131_072)
+    max_output_tokens: int = Field(default=2048, ge=128, le=16_384)
+    think: Literal[False] = False
+
+
+class NumericalClaim(ContractModel):
+    """One machine-checkable number stated by the model."""
+
+    claim_id: str = Field(pattern=r"^[a-z0-9][a-z0-9-]*$")
+    statistic_id: str = Field(min_length=1)
+    value: float = Field(allow_inf_nan=False)
+    unit: str = Field(min_length=1)
+
+
+class GeneratedCitation(ContractModel):
+    """One exact M9 evidence reference used by generated prose."""
+
+    source: CitationSource
+    source_id: str = Field(min_length=1)
+
+
+class ProblemExplanation(ContractModel):
+    """Generated explanation for exactly one deterministic M5 condition."""
+
+    condition_id: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+    numerical_claims: tuple[NumericalClaim, ...]
+    citations: tuple[GeneratedCitation, ...] = Field(min_length=1)
+
+
+class RecommendationExplanation(ContractModel):
+    """Generated explanation of one immutable M5 recommendation."""
+
+    recommendation_id: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+    resource: str = Field(min_length=1)
+    current_value: str = Field(min_length=1)
+    recommended_value: str = Field(min_length=1)
+    citations: tuple[GeneratedCitation, ...] = Field(min_length=1)
+
+
+class GeneratedUncertainty(ContractModel):
+    """Exact source uncertainty plus bounded explanatory prose."""
+
+    uncertainty_id: str = Field(pattern=r"^uncertainty-[1-9][0-9]*$")
+    source_text: str = Field(min_length=1)
+    explanation: str = Field(min_length=1)
+
+
+class LLMOutputCandidate(ContractModel):
+    """Untrusted structured Qwen3 output before independent validation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    run_id: str
+    package_id: str
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rag_mode: RAGMode
+    summary: str = Field(min_length=1)
+    problems: tuple[ProblemExplanation, ...]
+    recommendations: tuple[RecommendationExplanation, ...]
+    uncertainties: tuple[GeneratedUncertainty, ...]
+    approval_required: Literal[True]
+
+
+class ValidationIssue(ContractModel):
+    """One independently detected unsupported generated-output claim."""
+
+    code: str = Field(pattern=r"^[a-z0-9_]+$")
+    location: str = Field(min_length=1)
+    message: str = Field(min_length=1)
+
+
+class LLMValidationReport(ContractModel):
+    """Deterministic M12 validation result over one untrusted candidate."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    validator_version: Literal["1.0"] = "1.0"
+    run_id: str
+    package_id: str
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    candidate_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validated_at: datetime
+    passed: bool
+    issues: tuple[ValidationIssue, ...]
+
+    @field_validator("validated_at")
+    @classmethod
+    def validation_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("validation timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def pass_state_matches_issues(self) -> "LLMValidationReport":
+        if self.passed == bool(self.issues):
+            raise ValueError("validation passes exactly when no issues are present")
+        return self
+
+
+class AcceptedLLMOutput(ContractModel):
+    """Digest binding proving which candidate and validation were accepted."""
+
+    candidate_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    validation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class InferenceFailure(ContractModel):
+    """Explicit terminal failure before an output could be validated."""
+
+    code: str = Field(pattern=r"^[a-z0-9_]+$")
+    message: str = Field(min_length=1)
+
+
+class InferenceRunArtifact(ContractModel):
+    """Complete immutable record of one local Qwen3 inference attempt."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    adapter_version: Literal["1.0"] = "1.0"
+    prompt_version: Literal["1.0"] = "1.0"
+    run_id: str
+    status: InferenceStatus
+    requested_at: datetime
+    started_at: datetime
+    ended_at: datetime
+    package_id: str
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    rag_mode: RAGMode
+    ollama_url: str = Field(min_length=1)
+    model_name: str = Field(min_length=1)
+    model_digest: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    options: InferenceOptions
+    prompt_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    raw_response: str | None = None
+    raw_response_sha256: str | None = Field(default=None, pattern=r"^[0-9a-f]{64}$")
+    prompt_eval_count: int | None = Field(default=None, ge=0)
+    eval_count: int | None = Field(default=None, ge=0)
+    total_duration_ns: int | None = Field(default=None, ge=0)
+    candidate: LLMOutputCandidate | None = None
+    validation: LLMValidationReport | None = None
+    accepted_output: AcceptedLLMOutput | None = None
+    failure: InferenceFailure | None = None
+
+    @field_validator("requested_at", "started_at", "ended_at")
+    @classmethod
+    def inference_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("inference timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def state_and_digests_are_consistent(self) -> "InferenceRunArtifact":
+        if not self.requested_at <= self.started_at <= self.ended_at:
+            raise ValueError("inference timestamps must be ordered")
+        if (self.raw_response is None) != (self.raw_response_sha256 is None):
+            raise ValueError("raw response and digest must appear together")
+        if (
+            self.raw_response is not None
+            and self.raw_response_sha256
+            != hashlib.sha256(self.raw_response.encode()).hexdigest()
+        ):
+            raise ValueError("raw response digest does not match")
+        if self.validation is not None and (
+            self.candidate is None
+            or self.validation.run_id != self.run_id
+            or self.validation.package_id != self.package_id
+            or self.validation.package_sha256 != self.package_sha256
+            or self.validation.candidate_sha256
+            != hashlib.sha256(
+                json.dumps(
+                    self.candidate.model_dump(mode="json"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+        ):
+            raise ValueError("validation identity does not match inference run")
+        if self.status is InferenceStatus.ACCEPTED:
+            if (
+                self.validation is None
+                or not self.validation.passed
+                or self.accepted_output is None
+                or self.failure is not None
+            ):
+                raise ValueError("accepted inference requires passing validation")
+            validation_digest = hashlib.sha256(
+                json.dumps(
+                    self.validation.model_dump(mode="json"),
+                    sort_keys=True,
+                    separators=(",", ":"),
+                ).encode()
+            ).hexdigest()
+            if (
+                self.accepted_output.candidate_sha256
+                != self.validation.candidate_sha256
+                or self.accepted_output.validation_sha256 != validation_digest
+            ):
+                raise ValueError("accepted output digests do not match validation")
+        elif self.status is InferenceStatus.REJECTED:
+            if (
+                self.validation is None
+                or self.validation.passed
+                or self.accepted_output is not None
+                or self.failure is not None
+            ):
+                raise ValueError("rejected inference requires failed validation")
+        elif (
+            self.failure is None
+            or self.validation is not None
+            or self.accepted_output is not None
+        ):
+            raise ValueError("failed inference requires only an explicit failure")
+        return self
+
+
+class InferenceArtifactEnvelope(ContractModel):
+    """Content-digest envelope for one persisted M12 run."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    artifact: InferenceRunArtifact
+
+    @model_validator(mode="after")
+    def artifact_digest_matches(self) -> "InferenceArtifactEnvelope":
+        canonical = json.dumps(
+            self.artifact.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        if hashlib.sha256(canonical).hexdigest() != self.artifact_sha256:
+            raise ValueError("inference artifact digest does not match")
+        return self
+
+
+class InferenceRunSummary(ContractModel):
+    """Bounded inspection result for one persisted M12 run."""
+
+    run_id: str
+    status: InferenceStatus
+    package_id: str
+    rag_mode: RAGMode
+    model_name: str
+    model_digest: str | None
+    requested_at: datetime
+    ended_at: datetime
+    issue_count: int = Field(ge=0)
+    artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
 class MetricsRangeRequest(ContractModel):
     """Bounded raw Prometheus interval requested through M10."""
 
