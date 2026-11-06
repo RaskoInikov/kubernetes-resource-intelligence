@@ -25,11 +25,13 @@ Each case has paired configurations:
 1. Qwen3 with the deterministic M5 facts and explicit RAG-off input.
 2. Qwen3 with the same facts/settings plus verified M8 evidence.
 
-The fixed dataset targets 20–30 independently authored and reviewed cases
-covering confirmed incidents, normal workloads, insufficient monitoring data,
-counter resets or other quality defects, and resource-policy edge cases. Labels
-define expected facts, uncertainties, allowed recommendations and citations,
-and exclusions before system output is inspected.
+Dataset 1.0.0 is a finding-bearing real-service evaluation slice with two
+retained incidents and two repetitions per RAG mode. Labels define expected
+facts, uncertainties, allowed recommendations and citations, and exclusions
+before system output is inspected. Expanding to the planned 20–30 cases that
+also cover normal workloads, insufficient monitoring, counter resets, and
+policy edge cases remains a documented limitation rather than being inferred
+from model output.
 
 Required deterministic metrics are validation success, supported numerical
 claims, unsupported-claim rate, citation precision and recall, finding and
@@ -37,6 +39,18 @@ uncertainty coverage, recommendation consistency, and generation latency.
 Reports retain failed/invalid trials, paired differences, sample counts, and
 variability. Any model-based usefulness score is supplementary and reports its
 own model/prompt identity; it is never the sole correctness gate.
+
+Run the fresh local plan with a unique evaluation ID:
+
+```bash
+KRI_OLLAMA_MODEL_DIGEST=<full-local-digest> \
+KRI_OLLAMA_TIMEOUT_SECONDS=600 \
+python scripts/evaluate_m13_quality.py \
+  --evaluation-id <unique-id> --run-real
+```
+
+Omit `--run-real` to replay and rescore an already retained complete plan. Both
+inference and report stores are immutable, so reruns require a new ID.
 
 ## Recommendation Effectiveness (M14)
 

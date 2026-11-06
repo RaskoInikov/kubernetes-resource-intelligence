@@ -14,13 +14,14 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 from uuid import uuid4
 
-from pydantic import BaseModel, ValidationError
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from kri.contracts import (
     OBSERVATION_ID_PATTERN,
     AcceptedLLMOutput,
     CitationSource,
     GeneratedCitation,
+    GeneratedUncertainty,
     InferenceArtifactEnvelope,
     InferenceFailure,
     InferenceOptions,
@@ -30,12 +31,15 @@ from kri.contracts import (
     LLMInputArtifact,
     LLMOutputCandidate,
     LLMValidationReport,
+    NumericalClaim,
+    ProblemExplanation,
     RAGMode,
+    RecommendationExplanation,
     ValidationIssue,
 )
 
 ADAPTER_VERSION = "1.0"
-PROMPT_VERSION = "1.0"
+PROMPT_VERSION = "1.5"
 VALIDATOR_VERSION = "1.0"
 _NUMBER_IN_PROSE = re.compile(r"(?<![A-Za-z0-9])[-+]?(?:\d+(?:\.\d*)?|\.\d+)")
 _GENERATE = "__GENERATE__"
@@ -82,6 +86,24 @@ class OllamaGeneration:
     total_duration_ns: int | None
 
 
+class _CompactLLMResponse(BaseModel):
+    """Small untrusted generation expanded only with immutable M9 fields."""
+
+    model_config = ConfigDict(extra="forbid")
+
+    run_id: str
+    package_id: str
+    package_sha256: str
+    rag_mode: RAGMode
+    summary: str = Field(min_length=1)
+    problem_explanations: tuple[str, ...]
+    problem_knowledge_citation_ids: tuple[tuple[str, ...], ...]
+    recommendation_explanations: tuple[str, ...]
+    recommendation_knowledge_citation_ids: tuple[tuple[str, ...], ...]
+    uncertainty_explanations: tuple[str, ...]
+    approval_required: bool
+
+
 class LocalModelClient(Protocol):
     """Injectable boundary used by offline tests and the local Ollama client."""
 
@@ -92,6 +114,7 @@ class LocalModelClient(Protocol):
         model_name: str,
         messages: Sequence[Mapping[str, str]],
         options: InferenceOptions,
+        response_schema: Mapping[str, Any],
     ) -> OllamaGeneration: ...
 
 
@@ -164,6 +187,7 @@ class OllamaClient:
         model_name: str,
         messages: Sequence[Mapping[str, str]],
         options: InferenceOptions,
+        response_schema: Mapping[str, Any],
     ) -> OllamaGeneration:
         response = self.request_json(
             "POST",
@@ -173,7 +197,7 @@ class OllamaClient:
                 "messages": list(messages),
                 "stream": False,
                 "think": options.think,
-                "format": "json",
+                "format": response_schema,
                 "options": {
                     "temperature": options.temperature,
                     "seed": options.seed,
@@ -192,7 +216,14 @@ class OllamaClient:
         if response.get("done") is not True:
             raise OllamaError("ollama_interrupted", "generation did not complete")
         done_reason = response.get("done_reason")
-        if done_reason not in (None, "stop"):
+        if done_reason == "length":
+            try:
+                json.loads(content)
+            except json.JSONDecodeError as error:
+                raise OllamaError(
+                    "ollama_incomplete", "generation ended with reason: length"
+                ) from error
+        elif done_reason not in (None, "stop"):
             raise OllamaError(
                 "ollama_incomplete", f"generation ended with reason: {done_reason}"
             )
@@ -228,109 +259,72 @@ def render_messages(
         {"uncertainty_id": f"uncertainty-{index}", "source_text": text}
         for index, text in enumerate(package.risks_and_uncertainties, start=1)
     ]
-    statistics = {item.statistic_id: item for item in package.statistics}
-    output_template = {
-        "schema_version": "1.0",
+    output_identity = {
         "run_id": run_id,
         "package_id": package.package_id,
         "package_sha256": artifact.package_sha256,
         "rag_mode": rag_mode.value,
-        "summary": (
-            _GENERATE
-            if package.conditions or package.recommendations
-            else "No deterministic resource findings or recommendations were supplied; "
-            "review every listed uncertainty."
-        ),
-        "problems": [
-            {
-                "condition_id": condition.condition_id,
-                "explanation": _GENERATE,
-                "numerical_claims": [
-                    {
-                        "claim_id": f"claim-{condition_index}-{statistic_index}",
-                        "statistic_id": statistic_id,
-                        "value": statistics[statistic_id].value,
-                        "unit": statistics[statistic_id].unit,
-                    }
-                    for statistic_index, statistic_id in enumerate(
-                        condition.statistic_ids, start=1
-                    )
-                ],
-                "citations": [
-                    {"source": "analysis_evidence", "source_id": evidence_id}
-                    for evidence_id in condition.evidence_ids
-                ],
-            }
-            for condition_index, condition in enumerate(package.conditions, start=1)
-        ],
-        "recommendations": [
-            {
-                "recommendation_id": recommendation.recommendation_id,
-                "explanation": _GENERATE,
-                "resource": recommendation.resource,
-                "current_value": recommendation.current_value,
-                "recommended_value": recommendation.recommended_value,
-                "citations": [
-                    {"source": "analysis_evidence", "source_id": evidence_id}
-                    for evidence_id in recommendation.evidence_ids
-                ],
-            }
-            for recommendation in package.recommendations
-        ],
-        "uncertainties": [
-            {
-                **uncertainty,
-                "explanation": (
-                    _GENERATE
-                    if package.conditions or package.recommendations
-                    else "This source uncertainty limits interpretation."
-                ),
-            }
-            for uncertainty in uncertainties
-        ],
         "approval_required": True,
     }
     source = {
-        "run_id": run_id,
-        "package_id": package.package_id,
-        "package_sha256": artifact.package_sha256,
-        "rag_mode": rag_mode.value,
-        "workload_identity": package.identity.model_dump(mode="json"),
-        "sufficiency": package.sufficiency.value,
-        "statistics": [item.model_dump(mode="json") for item in package.statistics],
-        "conditions": [item.model_dump(mode="json") for item in package.conditions],
-        "recommendations": [
-            item.model_dump(mode="json") for item in package.recommendations
+        "required_output_identity": output_identity,
+        "conditions_in_output_order": [
+            {
+                "condition_type": item.condition_type,
+                "severity": item.severity.value,
+                "message": item.message,
+            }
+            for item in package.conditions
         ],
-        "analysis_evidence": [
-            item.model_dump(mode="json") for item in package.analysis_evidence
+        "recommendations_in_output_order": [
+            {
+                "resource": item.resource,
+                "action": item.action,
+                "basis": {
+                    "cpu_limit": (
+                        "CPU limit saturation or throttling requires bounded headroom"
+                    ),
+                    "cpu_request": "Average CPU usage exceeds the configured request",
+                    "memory_limit": "Memory pressure requires bounded limit headroom",
+                    "memory_request": "Memory usage exceeds the configured request",
+                }[item.resource],
+            }
+            for item in package.recommendations
         ],
-        "uncertainties": uncertainties,
+        "uncertainties_in_output_order": uncertainties,
         "knowledge_excerpts": (
-            [item.model_dump(mode="json") for item in package.evidence_excerpts]
+            [
+                {
+                    "chunk_id": item.chunk_id,
+                    "section": item.section,
+                    "excerpt": item.excerpt,
+                }
+                for item in package.evidence_excerpts
+            ]
             if rag_mode is RAGMode.ON
             else []
         ),
-        "instructions": package.instructions,
     }
     system = (
         "You are an evidence-grounded Kubernetes resource explanation renderer. "
-        "Return only JSON matching the supplied schema. Explain every supplied "
-        "condition and recommendation without adding diagnoses or resource values. "
-        "Put every number in numerical_claims, copy its exact statistic value/unit, "
-        "and keep prose free of digits. Copy every non-empty field from "
-        "output_template exactly except replace every __GENERATE__ sentinel with "
-        "clear prose. Cite "
-        "exact analysis evidence IDs; cite only "
-        "supplied knowledge chunks when RAG is on. Copy every uncertainty source_text "
-        "exactly. Never claim that a recommendation was applied or validated."
+        "Return only JSON matching the supplied compact schema. Generate a concise "
+        "summary and one short sentence for every supplied condition, recommendation, "
+        "and uncertainty without adding diagnoses or resource values. Do not repeat "
+        "timestamps, percentages, quantities, pod names, or other numbers. "
+        "Keep all generated prose free of digits; immutable numerical claims and "
+        "analysis citations are attached after generation. Copy "
+        "required_output_identity exactly. Return explanation arrays in source order, "
+        "with one entry per condition, recommendation, and uncertainty. Return "
+        "parallel "
+        "knowledge citation ID arrays for conditions and recommendations. When RAG is "
+        "on, cite relevant supplied chunks; keep all citation lists empty when RAG is "
+        "off. Use plain words, avoid numeric words, and never claim that a "
+        "recommendation was applied or validated."
     )
     user = (
-        "EVIDENCE INPUT — DO NOT RETURN THIS OBJECT:\n"
+        "EVIDENCE INPUT — USE IT, DO NOT COPY IT AS THE RESPONSE:\n"
         + json.dumps(source, sort_keys=True, separators=(",", ":"))
-        + "\nREQUIRED OUTPUT TEMPLATE — RETURN ONLY THIS OBJECT AFTER REPLACING "
-        "EVERY __GENERATE__ SENTINEL:\n"
-        + json.dumps(output_template, sort_keys=True, separators=(",", ":"))
+        + "\nGENERATE THE COMPACT EXPLANATION NOW."
     )
     return ({"role": "system", "content": system}, {"role": "user", "content": user})
 
@@ -341,6 +335,172 @@ def messages_digest(messages: Sequence[Mapping[str, str]]) -> str:
     return hashlib.sha256(
         json.dumps(list(messages), sort_keys=True, separators=(",", ":")).encode()
     ).hexdigest()
+
+
+def compact_response_schema(
+    artifact: LLMInputArtifact, rag_mode: RAGMode
+) -> dict[str, Any]:
+    """Build exact output bounds so decoding cannot merge or invent entries."""
+
+    schema = _CompactLLMResponse.model_json_schema()
+    properties = cast(dict[str, Any], schema["properties"])
+    printable_summary = r"^[A-Za-z ,.':;()/-]{1,120}$"
+    printable_explanation = r"^[A-Za-z ,.':;()/-]{1,72}$"
+    summary = cast(dict[str, Any], properties["summary"])
+    summary.update({"pattern": printable_summary, "maxLength": 120})
+
+    def exact_array(name: str, count: int) -> None:
+        value = cast(dict[str, Any], properties[name])
+        value["minItems"] = count
+        value["maxItems"] = count
+
+    def concise_strings(name: str, maximum: int) -> None:
+        value = cast(dict[str, Any], properties[name])
+        value["items"] = {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": maximum,
+            "pattern": printable_explanation,
+        }
+
+    exact_array("problem_explanations", len(artifact.package.conditions))
+    exact_array("problem_knowledge_citation_ids", len(artifact.package.conditions))
+    exact_array("recommendation_explanations", len(artifact.package.recommendations))
+    exact_array(
+        "recommendation_knowledge_citation_ids",
+        len(artifact.package.recommendations),
+    )
+    exact_array(
+        "uncertainty_explanations", len(artifact.package.risks_and_uncertainties)
+    )
+    concise_strings("problem_explanations", 72)
+    concise_strings("recommendation_explanations", 72)
+    concise_strings("uncertainty_explanations", 72)
+    allowed = [item.chunk_id for item in artifact.package.evidence_excerpts]
+    for name in (
+        "problem_knowledge_citation_ids",
+        "recommendation_knowledge_citation_ids",
+    ):
+        outer = cast(dict[str, Any], properties[name])
+        inner: dict[str, Any] = {
+            "type": "array",
+            "uniqueItems": True,
+            "items": {"type": "string", "enum": allowed},
+        }
+        if rag_mode is RAGMode.OFF:
+            inner["maxItems"] = 0
+        outer["items"] = inner
+    return schema
+
+
+def _expand_compact_response(
+    response: _CompactLLMResponse,
+    artifact: LLMInputArtifact,
+    run_id: str,
+    rag_mode: RAGMode,
+) -> LLMOutputCandidate:
+    package = artifact.package
+    if (
+        response.run_id != run_id
+        or response.package_id != package.package_id
+        or response.package_sha256 != artifact.package_sha256
+        or response.rag_mode is not rag_mode
+        or response.approval_required is not True
+        or len(response.problem_explanations) != len(package.conditions)
+        or len(response.problem_knowledge_citation_ids) != len(package.conditions)
+        or len(response.recommendation_explanations) != len(package.recommendations)
+        or len(response.recommendation_knowledge_citation_ids)
+        != len(package.recommendations)
+        or len(response.uncertainty_explanations)
+        != len(package.risks_and_uncertainties)
+    ):
+        raise ValueError("compact response identities or coverage do not match M9")
+    statistics = {item.statistic_id: item for item in package.statistics}
+    excerpts = {item.chunk_id for item in package.evidence_excerpts}
+
+    def citations(
+        evidence_ids: tuple[str, ...], knowledge_ids: tuple[str, ...]
+    ) -> tuple[GeneratedCitation, ...]:
+        if len(knowledge_ids) != len(set(knowledge_ids)):
+            raise ValueError("compact response knowledge citations must be unique")
+        if rag_mode is RAGMode.OFF and knowledge_ids:
+            raise ValueError("RAG-off compact response cannot cite knowledge")
+        if not set(knowledge_ids).issubset(excerpts):
+            raise ValueError("compact response cites unknown knowledge")
+        return tuple(
+            GeneratedCitation(source=CitationSource.ANALYSIS_EVIDENCE, source_id=value)
+            for value in evidence_ids
+        ) + tuple(
+            GeneratedCitation(source=CitationSource.KNOWLEDGE_CHUNK, source_id=value)
+            for value in knowledge_ids
+        )
+
+    return LLMOutputCandidate(
+        run_id=run_id,
+        package_id=package.package_id,
+        package_sha256=artifact.package_sha256,
+        rag_mode=rag_mode,
+        summary=response.summary,
+        problems=tuple(
+            ProblemExplanation(
+                condition_id=condition.condition_id,
+                explanation=explanation,
+                numerical_claims=tuple(
+                    NumericalClaim(
+                        claim_id=f"claim-{condition_index}-{statistic_index}",
+                        statistic_id=statistic_id,
+                        value=statistics[statistic_id].value,
+                        unit=statistics[statistic_id].unit,
+                    )
+                    for statistic_index, statistic_id in enumerate(
+                        condition.statistic_ids, start=1
+                    )
+                ),
+                citations=citations(condition.evidence_ids, knowledge_ids),
+            )
+            for condition_index, (condition, explanation, knowledge_ids) in enumerate(
+                zip(
+                    package.conditions,
+                    response.problem_explanations,
+                    response.problem_knowledge_citation_ids,
+                    strict=True,
+                ),
+                start=1,
+            )
+        ),
+        recommendations=tuple(
+            RecommendationExplanation(
+                recommendation_id=recommendation.recommendation_id,
+                explanation=explanation,
+                resource=recommendation.resource,
+                current_value=recommendation.current_value,
+                recommended_value=recommendation.recommended_value,
+                citations=citations(recommendation.evidence_ids, knowledge_ids),
+            )
+            for recommendation, explanation, knowledge_ids in zip(
+                package.recommendations,
+                response.recommendation_explanations,
+                response.recommendation_knowledge_citation_ids,
+                strict=True,
+            )
+        ),
+        uncertainties=tuple(
+            GeneratedUncertainty(
+                uncertainty_id=f"uncertainty-{index}",
+                source_text=source_text,
+                explanation=explanation,
+            )
+            for index, (source_text, explanation) in enumerate(
+                zip(
+                    package.risks_and_uncertainties,
+                    response.uncertainty_explanations,
+                    strict=True,
+                ),
+                start=1,
+            )
+        ),
+        approval_required=True,
+    )
 
 
 class LLMOutputValidator:
@@ -641,7 +801,12 @@ class InferenceRunner:
                     "ollama_model_mismatch",
                     "installed model digest does not match configured digest",
                 )
-            generated = self.client.generate(self.model_name, messages, chosen)
+            generated = self.client.generate(
+                self.model_name,
+                messages,
+                chosen,
+                compact_response_schema(source, rag_mode),
+            )
         except OllamaError as error:
             return self._failed(
                 source,
@@ -657,8 +822,16 @@ class InferenceRunner:
 
         raw = generated.content
         try:
-            candidate = LLMOutputCandidate.model_validate_json(raw)
-        except ValidationError as error:
+            try:
+                compact = _CompactLLMResponse.model_validate_json(raw)
+            except ValidationError:
+                # Continue accepting the historical full response shape from
+                # injected/recorded adapters while prompt 1.2 asks Ollama only
+                # for the compact shape.
+                candidate = LLMOutputCandidate.model_validate_json(raw)
+            else:
+                candidate = _expand_compact_response(compact, source, run_id, rag_mode)
+        except (ValidationError, ValueError) as error:
             return self._failed(
                 source,
                 run_id,
@@ -682,6 +855,7 @@ class InferenceRunner:
             else None
         )
         return InferenceRunArtifact(
+            prompt_version=PROMPT_VERSION,
             run_id=run_id,
             status=(InferenceStatus.ACCEPTED if accepted else InferenceStatus.REJECTED),
             requested_at=requested_at,
@@ -721,6 +895,7 @@ class InferenceRunner:
         generation: OllamaGeneration | None = None,
     ) -> InferenceRunArtifact:
         return InferenceRunArtifact(
+            prompt_version=PROMPT_VERSION,
             run_id=run_id,
             status=InferenceStatus.FAILED,
             requested_at=requested_at,

@@ -1,10 +1,26 @@
 # Project Progress
 
 ## Current milestone
-M12 — Local Qwen3 inference and independent output validation (complete,
-offline and real-service verified)
+M13 — Reproducible RAG-on/off LLM quality evaluation (complete, offline and
+fresh real-service evaluated; prompt 1.5 CPU follow-up accepted in both modes)
 
 ## Completed
+- M13 adds a versioned, digest-bound quality dataset with distinct author and
+  reviewer roles, leakage notes, two retained finding-bearing incident cases,
+  fixed Qwen3 identity/options, two repetitions, reviewed facts,
+  uncertainties, recommendations, citation judgments, exclusions, and
+  provenance.
+- Prompt 1.5 uses a minimal semantic projection, compact positional prose,
+  dynamically exact arrays, and printable digit-free regex length bounds. The
+  adapter preserves the raw response, rejects count/chunk-ID mismatches, and
+  attaches only immutable M9 identities, numerical claims, analysis citations,
+  recommendation values, and uncertainty source text before independent M12
+  validation. Prompt 1.4 remains replayable for dataset 1.0.0.
+- The deterministic paired evaluator records all trial/input/output digests,
+  statuses, failures, validation issues, latency, metric numerators and
+  denominators, missing candidate scores, paired differences, variability, and
+  improved/regressed/inconclusive outcomes. Immutable replay uses the same
+  retained M12 artifacts without contacting Ollama.
 - Git repository initialized.
 - Initial architecture and project requirements defined.
 - Installable Python 3.12+ package and `src` repository layout created.
@@ -500,10 +516,60 @@ offline and real-service verified)
   TypeScript, and a Vite production build. The suite remained offline; the
   separate real verification contacted only local Ollama and wrote immutable
   result artifacts.
+- Fresh real M13 evaluation `m13-final-20261105` ran eight planned trials over
+  two retained real incident packages. It pinned `qwen3:4b` digest
+  `359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7`,
+  prompt 1.4, temperature zero, seed 42, an 8,192-token context, a 768-token
+  output bound, disabled thinking, and dataset digest
+  `c89ac9ea18c62ab6fcb3ec30164290daf560202cddd21976c4e7598e1abb97f1`.
+- Five real candidates were parseable but rejected for undeclared numbers in
+  generated prose. Three RAG-on trials failed before scoring: one 600-second
+  timeout and two output-bound incomplete generations. Validation success was
+  zero in both modes. Only one pair had both candidates for other quality
+  metrics; its equal perfect structural scores were inconclusive and do not
+  override validation failure or the three missing pairs.
+- Across all four pairs, RAG-off mean latency was 335.332 seconds and RAG-on
+  mean latency was 513.635 seconds. The mean paired RAG-on difference was
+  +178.303 seconds with 48.914-second standard deviation, so latency regressed.
+  Quality benefit was inconclusive. Immutable report digest is
+  `12e797408c9134f2d4a181cab1f97bee9aeffa59e126045f23b9982bb39fa192`.
+- CPU bottleneck trials distinguished a 900-second full-schema timeout, a
+  509.365-second compact-object placeholder copy, a 600-second Qwen3.5 9B
+  timeout, and a 409.619-second positional-array pre-bound result. Prompt 1.4
+  reduced final RAG-off runs to 296.337–425.400 seconds and prevented structural
+  count/chunk-ID drift, but did not make local generation reliable or
+  interactive.
+- A real prompt 1.5 follow-up on retained CPU-throttling package
+  `llm-input-ui-20261102161957` produced validator-accepted explanations with
+  zero issues in both modes. The identical-options pair used a 4,096-token
+  context and 768-token output ceiling. RAG-off used 930 prompt tokens, 367
+  output tokens, and 89.324 seconds; RAG-on used 1,244 prompt tokens, 682 output
+  tokens, and 181.216 seconds. RAG-on emitted 16 valid citations resolving to
+  the two supplied CPU runbook chunks; RAG-off emitted none. Relative to prompt
+  1.4 mode means, latency improved 73.4% and 64.7%, respectively, without
+  changing independent validation or deterministic fact attachment. A separate
+  accepted RAG-off run established a 640-token minimum tested ceiling at 88.485
+  seconds.
+- The follow-up retained failed 512/640/768/1,024-token boundary attempts and a
+  control-character grammar failure. Incomplete or malformed output remained
+  failed; no response was repaired. The accepted artifact digests are
+  `dac9d262759fcd39aa50ca6c66c8598bf1eb80d2cea278619366b8fcabccf632`
+  (RAG-off) and
+  `d17290918893312b570818265f278a72f4739cacedca1d0201335bef175bafe1`
+  (RAG-on).
+- Post-M13 `make verify` passed on 2026-11-05 from the project virtual
+  environment with Ruff, strict mypy over 48 source files, 325 Python tests at
+  100% statement and branch coverage, ten Vitest tests, strict TypeScript, and
+  a Vite production build. Offline replay reproduced the retained real report's
+  trial/failure counts and every paired comparison.
+- Post-optimization `make verify` passed on 2026-11-06 with Ruff, formatting,
+  strict mypy over 48 source files, 325 Python tests at 100% statement and
+  branch coverage, ten Vitest tests, strict TypeScript, and a Vite production
+  build. The suite remained offline; real Ollama runs are retained separately.
 
 ## Next
-M0–M12 are complete. Implement M13's fixed, independently reviewed paired
-RAG-on/off quality evaluation. M13–M17 must complete and verify all remaining
+M0–M13 are complete. Implement M14's controlled recommendation-effectiveness
+evaluation. M14–M17 must complete and verify all remaining
 backend, ML, retrieval, experiment, lineage, API, and reliability work before
 M18 begins.
 
@@ -511,18 +577,20 @@ M18 begins.
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- M13–M18 are planned but not implemented. M10 and M11 are loopback-only development
+- M14–M18 are planned but not implemented. M10 and M11 are loopback-only development
   tools and do not provide production authentication, authorization, TLS, or
   deployment packaging.
 - M11 has offline component coverage and a production build, but has not yet
   been exercised in a browser against live Kubernetes, Prometheus, and Qdrant
   services.
-- Real M12 acceptance used a finding-free retained package. Detected-condition
-  and recommendation explanations are exhaustively covered with deterministic
-  offline model responses, but a real Qwen3 run over the larger six-condition,
-  two-recommendation package exceeded the 600-second CPU-only request bound.
-  M13 must measure this latency and validate real finding-bearing trials rather
-  than treating the finding-free acceptance run as quality evidence.
+- M13 dataset 1.0.0 contains two retained finding-bearing pressure incidents,
+  not the longer-term 20–30-case mix. Healthy workloads, insufficient
+  monitoring, counter resets, and additional policy edge cases remain absent.
+- CPU-only Qwen3 prompt 1.5 is reliable for the verified CPU-throttling package
+  but remains too slow for a tight interactive budget: accepted latency was
+  89.324 seconds without retrieval and 181.216 seconds with retrieval. This
+  single-package follow-up does not revise the inconclusive two-case prompt 1.4
+  M13 comparison or establish general reliability.
 - Existing schema 1.0 experiment artifacts cannot be retroactively assigned
   terminal state or provenance after their Kubernetes Jobs have disappeared;
   they remain readable and their missing lifecycle evidence stays explicit.

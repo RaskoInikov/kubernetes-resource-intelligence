@@ -43,6 +43,7 @@ from kri.inference import (
     OllamaGeneration,
     _request_json,
     canonical_digest,
+    compact_response_schema,
     messages_digest,
     render_messages,
     text_digest,
@@ -157,6 +158,40 @@ def valid_candidate(
     )
 
 
+def compact_response(candidate: LLMOutputCandidate) -> dict[str, Any]:
+    return {
+        "run_id": candidate.run_id,
+        "package_id": candidate.package_id,
+        "package_sha256": candidate.package_sha256,
+        "rag_mode": candidate.rag_mode,
+        "summary": candidate.summary,
+        "problem_explanations": [item.explanation for item in candidate.problems],
+        "problem_knowledge_citation_ids": [
+            [
+                citation.source_id
+                for citation in item.citations
+                if citation.source is CitationSource.KNOWLEDGE_CHUNK
+            ]
+            for item in candidate.problems
+        ],
+        "recommendation_explanations": [
+            item.explanation for item in candidate.recommendations
+        ],
+        "recommendation_knowledge_citation_ids": [
+            [
+                citation.source_id
+                for citation in item.citations
+                if citation.source is CitationSource.KNOWLEDGE_CHUNK
+            ]
+            for item in candidate.recommendations
+        ],
+        "uncertainty_explanations": [
+            item.explanation for item in candidate.uncertainties
+        ],
+        "approval_required": candidate.approval_required,
+    }
+
+
 class FakeClient:
     def __init__(
         self,
@@ -181,9 +216,11 @@ class FakeClient:
         model_name: str,
         messages: Sequence[Mapping[str, str]],
         options: InferenceOptions,
+        response_schema: Mapping[str, Any],
     ) -> OllamaGeneration:
         assert model_name == "qwen3:test"
         assert options.seed == 42
+        assert response_schema["title"] == "_CompactLLMResponse"
         self.messages = messages
         return OllamaGeneration(self.content, 100, 50, 1234)
 
@@ -239,6 +276,66 @@ def test_accepted_rag_on_and_off_runs_are_reproducible_and_persisted(
     assert summary.issue_count == 0
     with pytest.raises(InferenceStoreError, match="already exists"):
         store.save(result)
+
+
+def test_compact_response_is_deterministically_expanded_and_rejected_safely() -> None:
+    artifact = source_artifact()
+    candidate = valid_candidate(artifact)
+    compact = compact_response(candidate)
+    raw = json.dumps(compact)
+
+    result = runner(FakeClient(raw)).run(artifact, "run-m12", RAGMode.ON)
+
+    assert result.status is InferenceStatus.ACCEPTED
+    assert result.raw_response == raw
+    assert result.candidate is not None
+    assert result.candidate.summary == candidate.summary
+    assert result.candidate.problems[0].numerical_claims[0].statistic_id == "s-throttle"
+    assert result.candidate.recommendations[0].recommended_value == "140m"
+
+    identity_changes: tuple[tuple[str, Any], ...] = (
+        ("run_id", "other-run"),
+        ("package_id", "other-package"),
+        ("package_sha256", "2" * 64),
+        ("rag_mode", "off"),
+        ("approval_required", False),
+        ("problem_explanations", []),
+        ("problem_knowledge_citation_ids", []),
+        ("recommendation_explanations", []),
+        ("recommendation_knowledge_citation_ids", []),
+        ("uncertainty_explanations", []),
+    )
+    for index, (field, value) in enumerate(identity_changes, start=1):
+        expected_run_id = f"run-bad-{index}"
+        changed = {**compact, "run_id": expected_run_id, field: value}
+        failed = runner(FakeClient(json.dumps(changed))).run(
+            artifact, expected_run_id, RAGMode.ON
+        )
+        assert failed.failure is not None
+        assert failed.failure.code == "malformed_output"
+
+    bad_citations = (
+        ["cpu-runbook-section-1", "cpu-runbook-section-1"],
+        ["unknown-chunk"],
+    )
+    for index, values in enumerate(bad_citations, start=1):
+        changed = json.loads(json.dumps(compact))
+        changed["run_id"] = f"run-citation-{index}"
+        changed["problem_knowledge_citation_ids"][0] = values
+        failed = runner(FakeClient(json.dumps(changed))).run(
+            artifact, f"run-citation-{index}", RAGMode.ON
+        )
+        assert failed.failure is not None
+        assert failed.failure.code == "malformed_output"
+
+    off_candidate = valid_candidate(artifact, run_id="run-off", rag_mode=RAGMode.OFF)
+    off_compact = compact_response(off_candidate)
+    off_compact["problem_knowledge_citation_ids"][0] = ["cpu-runbook-section-1"]
+    off_failed = runner(FakeClient(json.dumps(off_compact))).run(
+        artifact, "run-off", RAGMode.OFF
+    )
+    assert off_failed.failure is not None
+    assert off_failed.failure.code == "malformed_output"
 
 
 def test_validator_reports_all_unsupported_content_without_repair() -> None:
@@ -470,13 +567,16 @@ def test_ollama_client_validates_model_and_generation_responses() -> None:
     client = OllamaClient("http://ollama.test/", 12, request)
     assert client.model_digest("qwen3:test") == MODEL_DIGEST
     generated = client.generate(
-        "qwen3:test", ({"role": "user", "content": "test"},), InferenceOptions()
+        "qwen3:test",
+        ({"role": "user", "content": "test"},),
+        InferenceOptions(),
+        {"type": "object"},
     )
     assert generated == OllamaGeneration("{}", 2, 1, 3)
     payload = calls[1][2]
     assert payload is not None
     assert payload["stream"] is False
-    assert payload["format"] == "json"
+    assert payload["format"] == {"type": "object"}
 
     def response(value: dict[str, Any]) -> OllamaClient:
         return OllamaClient("http://ollama", request_json=lambda *_: value)
@@ -497,8 +597,16 @@ def test_ollama_client_validates_model_and_generation_responses() -> None:
         ({"message": {}, "done": True}, "content is missing"),
         ({"message": {"content": "{}"}, "done": False}, "did not complete"),
         (
-            {"message": {"content": "{}"}, "done": True, "done_reason": "length"},
+            {
+                "message": {"content": "{"},
+                "done": True,
+                "done_reason": "length",
+            },
             "reason: length",
+        ),
+        (
+            {"message": {"content": "{}"}, "done": True, "done_reason": "load"},
+            "reason: load",
         ),
         (
             {
@@ -511,11 +619,17 @@ def test_ollama_client_validates_model_and_generation_responses() -> None:
     )
     for value, message in invalid_responses:
         with pytest.raises(OllamaError, match=message):
-            response(value).generate("qwen3:test", messages, options)
+            response(value).generate(
+                "qwen3:test", messages, options, {"type": "object"}
+            )
     none_metadata = response({"message": {"content": "{}"}, "done": True}).generate(
-        "qwen3:test", messages, options
+        "qwen3:test", messages, options, {"type": "object"}
     )
     assert none_metadata.prompt_eval_count is None
+    complete_at_limit = response(
+        {"message": {"content": "{}"}, "done": True, "done_reason": "length"}
+    ).generate("qwen3:test", messages, options, {"type": "object"})
+    assert complete_at_limit.content == "{}"
 
 
 class FakeHTTPResponse:
@@ -625,8 +739,23 @@ def test_prompt_and_text_digests_are_stable() -> None:
     assert messages_digest(first) == messages_digest(second)
     assert text_digest("value") != text_digest("Value")
     no_findings = render_messages(no_findings_artifact(), "run-empty", RAGMode.OFF)
-    assert "No deterministic resource findings" in no_findings[1]["content"]
-    assert "This source uncertainty limits interpretation" in no_findings[1]["content"]
+    assert '"conditions_in_output_order":[]' in no_findings[1]["content"]
+    assert "post-change experiment" in no_findings[1]["content"]
+
+    on_schema = compact_response_schema(artifact, RAGMode.ON)
+    properties = on_schema["properties"]
+    assert properties["summary"]["pattern"] == r"^[A-Za-z ,.':;()/-]{1,120}$"
+    assert properties["problem_explanations"]["items"] == {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 72,
+        "pattern": r"^[A-Za-z ,.':;()/-]{1,72}$",
+    }
+    off_schema = compact_response_schema(artifact, RAGMode.OFF)
+    assert (
+        off_schema["properties"]["problem_knowledge_citation_ids"]["items"]["maxItems"]
+        == 0
+    )
 
 
 def test_inference_contracts_reject_inconsistent_states(tmp_path: Path) -> None:

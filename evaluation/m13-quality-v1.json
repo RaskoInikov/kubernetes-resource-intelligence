@@ -1,0 +1,463 @@
+{
+  "schema_version": "1.0",
+  "dataset_sha256": "c89ac9ea18c62ab6fcb3ec30164290daf560202cddd21976c4e7598e1abb97f1",
+  "dataset": {
+    "schema_version": "1.0",
+    "dataset_version": "1.0.0",
+    "created_at": "2026-11-05T09:00:00Z",
+    "author": "quality-evaluation-authors",
+    "reviewer": "project-quality-reviewers",
+    "reviewed_at": "2026-11-05T10:00:00Z",
+    "leakage_notes": [
+      "Labels are derived only from retained M5/M9 source artifacts.",
+      "No Qwen3 response or M13 score was inspected while defining labels.",
+      "The dataset is not indexed as retrievable operational knowledge."
+    ],
+    "model_name": "qwen3:4b",
+    "model_digest": "359d7dd4bcdab3d86b87d73ac27966f4dbb9f5efdfcc75d34a8764a09474fae7",
+    "prompt_version": "1.4",
+    "options": {
+      "temperature": 0.0,
+      "seed": 42,
+      "context_tokens": 8192,
+      "max_output_tokens": 768,
+      "think": false
+    },
+    "trial_count": 2,
+    "cases": [
+      {
+        "case_id": "cpu-memory-pressure-a",
+        "package_id": "llm-input-ui-20261102154751",
+        "package_sha256": "471aecac4cf04ff1437fcd5fb9bae520be925983581d0867577c803e94add7a6",
+        "analysis_id": "analysis-final-cpu-001",
+        "observation_id": "obs-ui-20261102154751",
+        "expected_condition_ids": [
+          "cpu_limit_saturation:kri-workload-75cf886d4d-2w42z:application",
+          "cpu_limit_saturation:kri-workload-75cf886d4d-tk6sr:application",
+          "cpu_request_low:kri-workload-75cf886d4d-2w42z:application",
+          "cpu_request_low:kri-workload-75cf886d4d-tk6sr:application",
+          "cpu_throttling_high:kri-workload-75cf886d4d-2w42z:application",
+          "cpu_throttling_high:kri-workload-75cf886d4d-tk6sr:application",
+          "memory_request_low:kri-workload-75cf886d4d-tk6sr:application"
+        ],
+        "expected_facts": [
+          {
+            "statistic_id": "cpu_limit_utilization_peak_ratio:application:kri-workload-75cf886d4d-2w42z",
+            "value": 1.096381,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_limit_utilization_peak_ratio:application:kri-workload-75cf886d4d-tk6sr",
+            "value": 1.045559,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_request_utilization_average_ratio:application:kri-workload-75cf886d4d-2w42z",
+            "value": 1.4319045000000001,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_request_utilization_average_ratio:application:kri-workload-75cf886d4d-tk6sr",
+            "value": 1.4340891666666666,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_throttle_period_ratio:application:kri-workload-75cf886d4d-2w42z",
+            "value": 0.8793284365162645,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_throttle_period_ratio:application:kri-workload-75cf886d4d-tk6sr",
+            "value": 0.8199791883454735,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "memory_request_utilization_p95_ratio:application:kri-workload-75cf886d4d-tk6sr",
+            "value": 1.360595703125,
+            "unit": "ratio"
+          }
+        ],
+        "expected_uncertainties": [
+          "Analysis is limited to the recorded interval 2026-11-02T15:54:00+00:00 through 2026-11-02T15:56:00+00:00; results may not generalize beyond this workload window.",
+          "CPU counter samples contain repeated range evaluations for kri-workload-75cf886d4d-2w42z/application; peak rate uses intervals between observed counter updates, excludes the first potentially partial update, and remains limited by scrape cadence.",
+          "CPU counter samples contain repeated range evaluations for kri-workload-75cf886d4d-tk6sr/application; peak rate uses intervals between observed counter updates, excludes the first potentially partial update, and remains limited by scrape cadence.",
+          "Recommendations have not been applied or validated by a bounded post-change experiment; approval and remeasurement are required.",
+          "missing_metric_family: kri_http_request_errors_total: query returned no series"
+        ],
+        "expected_recommendations": [
+          {
+            "recommendation_id": "increase-cpu-limit",
+            "resource": "cpu_limit",
+            "current_value": "100m",
+            "recommended_value": "140m"
+          },
+          {
+            "recommendation_id": "increase-cpu-request",
+            "resource": "cpu_request",
+            "current_value": "50m",
+            "recommended_value": "90m"
+          },
+          {
+            "recommendation_id": "increase-memory-request",
+            "resource": "memory_request",
+            "current_value": "64Mi",
+            "recommended_value": "109Mi"
+          }
+        ],
+        "citation_judgments": [
+          {
+            "target_id": "cpu_limit_saturation:kri-workload-75cf886d4d-2w42z:application",
+            "required_analysis_ids": [
+              "resource-cpu-limit",
+              "series-0007"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_limit_saturation:kri-workload-75cf886d4d-tk6sr:application",
+            "required_analysis_ids": [
+              "resource-cpu-limit",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_request_low:kri-workload-75cf886d4d-2w42z:application",
+            "required_analysis_ids": [
+              "resource-cpu-request",
+              "series-0007"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_request_low:kri-workload-75cf886d4d-tk6sr:application",
+            "required_analysis_ids": [
+              "resource-cpu-request",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_throttling_high:kri-workload-75cf886d4d-2w42z:application",
+            "required_analysis_ids": [
+              "series-0001",
+              "series-0003"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_throttling_high:kri-workload-75cf886d4d-tk6sr:application",
+            "required_analysis_ids": [
+              "series-0002",
+              "series-0004"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "memory_request_low:kri-workload-75cf886d4d-tk6sr:application",
+            "required_analysis_ids": [
+              "resource-memory-request",
+              "series-0066"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-memory-sizing-chunk-001",
+              "runbook-memory-sizing-chunk-002",
+              "runbook-memory-sizing-chunk-003"
+            ],
+            "required_knowledge_ids": [
+              "runbook-memory-sizing-chunk-003"
+            ]
+          },
+          {
+            "target_id": "increase-cpu-limit",
+            "required_analysis_ids": [
+              "resource-cpu-limit",
+              "series-0001",
+              "series-0002",
+              "series-0003",
+              "series-0004",
+              "series-0007",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "increase-cpu-request",
+            "required_analysis_ids": [
+              "resource-cpu-request",
+              "series-0007",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "increase-memory-request",
+            "required_analysis_ids": [
+              "resource-memory-request",
+              "series-0066"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-memory-sizing-chunk-001",
+              "runbook-memory-sizing-chunk-002",
+              "runbook-memory-sizing-chunk-003"
+            ],
+            "required_knowledge_ids": [
+              "runbook-memory-sizing-chunk-003"
+            ]
+          }
+        ],
+        "exclusions": [
+          "Do not infer effectiveness before a bounded post-change experiment.",
+          "Do not score prose style or fluency as factual correctness.",
+          "Do not treat absent application error metrics as zero errors."
+        ],
+        "provenance": "Retained real kind/Prometheus incident package; labels copy the immutable deterministic M5/M9 closure before M13 generation."
+      },
+      {
+        "case_id": "cpu-pressure-b",
+        "package_id": "llm-input-ui-20261102161957",
+        "package_sha256": "a0dfd6206d797d5cc674bc049447cf5998218ba6f081ff00b440931f22685957",
+        "analysis_id": "analysis-ui-20261102161957",
+        "observation_id": "obs-ui-20261102161957",
+        "expected_condition_ids": [
+          "cpu_limit_saturation:kri-workload-698f67d7f6-8cwhn:application",
+          "cpu_limit_saturation:kri-workload-698f67d7f6-p92q8:application",
+          "cpu_request_low:kri-workload-698f67d7f6-8cwhn:application",
+          "cpu_request_low:kri-workload-698f67d7f6-p92q8:application",
+          "cpu_throttling_high:kri-workload-698f67d7f6-8cwhn:application",
+          "cpu_throttling_high:kri-workload-698f67d7f6-p92q8:application"
+        ],
+        "expected_facts": [
+          {
+            "statistic_id": "cpu_limit_utilization_peak_ratio:application:kri-workload-698f67d7f6-8cwhn",
+            "value": 1.2503807142857146,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_limit_utilization_peak_ratio:application:kri-workload-698f67d7f6-p92q8",
+            "value": 1.0791621428571432,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_request_utilization_average_ratio:application:kri-workload-698f67d7f6-8cwhn",
+            "value": 1.2768732407407408,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_request_utilization_average_ratio:application:kri-workload-698f67d7f6-p92q8",
+            "value": 1.2104040740740742,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_throttle_period_ratio:application:kri-workload-698f67d7f6-8cwhn",
+            "value": 0.8651079136690647,
+            "unit": "ratio"
+          },
+          {
+            "statistic_id": "cpu_throttle_period_ratio:application:kri-workload-698f67d7f6-p92q8",
+            "value": 0.8249286393910561,
+            "unit": "ratio"
+          }
+        ],
+        "expected_uncertainties": [
+          "Analysis is limited to the recorded interval 2026-11-02T16:23:00+00:00 through 2026-11-02T16:25:00+00:00; results may not generalize beyond this workload window.",
+          "CPU counter samples contain repeated range evaluations for kri-workload-698f67d7f6-8cwhn/application; peak rate uses intervals between observed counter updates, excludes the first potentially partial update, and remains limited by scrape cadence.",
+          "CPU counter samples contain repeated range evaluations for kri-workload-698f67d7f6-p92q8/application; peak rate uses intervals between observed counter updates, excludes the first potentially partial update, and remains limited by scrape cadence.",
+          "CPU request headroom target 150m was constrained to 140m by the current CPU limit; the limit recommendation must be applied or the request must be reevaluated before treating it as adequately sized.",
+          "Condition cpu_request_low:kri-workload-698f67d7f6-p92q8:application is within 5% of its decision threshold (1.2104 versus 1.2); its classification is sensitive to normal measurement variation.",
+          "Recommendations have not been applied or validated by a bounded post-change experiment; approval and remeasurement are required.",
+          "missing_metric_family: kri_http_request_errors_total: query returned no series"
+        ],
+        "expected_recommendations": [
+          {
+            "recommendation_id": "increase-cpu-limit",
+            "resource": "cpu_limit",
+            "current_value": "140m",
+            "recommended_value": "220m"
+          },
+          {
+            "recommendation_id": "increase-cpu-request",
+            "resource": "cpu_request",
+            "current_value": "90m",
+            "recommended_value": "140m"
+          }
+        ],
+        "citation_judgments": [
+          {
+            "target_id": "cpu_limit_saturation:kri-workload-698f67d7f6-8cwhn:application",
+            "required_analysis_ids": [
+              "resource-cpu-limit",
+              "series-0007"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_limit_saturation:kri-workload-698f67d7f6-p92q8:application",
+            "required_analysis_ids": [
+              "resource-cpu-limit",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_request_low:kri-workload-698f67d7f6-8cwhn:application",
+            "required_analysis_ids": [
+              "resource-cpu-request",
+              "series-0007"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_request_low:kri-workload-698f67d7f6-p92q8:application",
+            "required_analysis_ids": [
+              "resource-cpu-request",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_throttling_high:kri-workload-698f67d7f6-8cwhn:application",
+            "required_analysis_ids": [
+              "series-0001",
+              "series-0003"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "cpu_throttling_high:kri-workload-698f67d7f6-p92q8:application",
+            "required_analysis_ids": [
+              "series-0002",
+              "series-0004"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "increase-cpu-limit",
+            "required_analysis_ids": [
+              "resource-cpu-limit",
+              "series-0001",
+              "series-0002",
+              "series-0003",
+              "series-0004",
+              "series-0007",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          },
+          {
+            "target_id": "increase-cpu-request",
+            "required_analysis_ids": [
+              "resource-cpu-request",
+              "series-0007",
+              "series-0008"
+            ],
+            "allowed_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-001",
+              "runbook-cpu-throttling-chunk-002"
+            ],
+            "required_knowledge_ids": [
+              "runbook-cpu-throttling-chunk-002"
+            ]
+          }
+        ],
+        "exclusions": [
+          "Do not infer effectiveness before a bounded post-change experiment.",
+          "Do not score prose style or fluency as factual correctness.",
+          "Do not treat absent application error metrics as zero errors."
+        ],
+        "provenance": "Retained real kind/Prometheus incident package; labels copy the immutable deterministic M5/M9 closure before M13 generation."
+      }
+    ]
+  }
+}
+

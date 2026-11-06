@@ -10,9 +10,10 @@ M7 builds a derived Qdrant index with read-only knowledge inspection and
 retrieval. M8 retrieves and evaluates analysis-grounded operational evidence;
 M9 builds an integrity-checked, inspectable LLM handoff without invoking a
 model; M10 exposes the complete pipeline through FastAPI; M11 adds a small
-React and TypeScript testing console; and M12 adds local Qwen3 inference with
-independent output validation. The planned M13–M17 backend sequence adds paired
-RAG quality evaluation, recommendation-effectiveness experiments, artifact
+React and TypeScript testing console; M12 adds local Qwen3 inference with
+independent output validation; and M13 adds fixed-dataset paired RAG quality
+evaluation. The planned M14–M17 backend sequence adds
+recommendation-effectiveness experiments, artifact
 lineage, complete API orchestration, and real-service backend acceptance. Only
 after that gate does M18 deliver the final production-oriented React interface.
 

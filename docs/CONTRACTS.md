@@ -288,7 +288,33 @@ Accepted, rejected, malformed, interrupted, and dependency-failed attempts are
 stored as immutable digest envelopes. Rejected candidates remain inspectable;
 only an accepted status can carry an `AcceptedLLMOutput` digest binding.
 
-## Planned M13–M17 Contracts
+## M13 Quality-Evaluation Contracts
+
+Prompt 1.5 raw output is a compact positional response. Exact schema array
+bounds prevent merged or omitted findings, and printable digit-free regular
+expressions bound the summary to 120 characters and each explanation to 72
+characters. RAG-off permits no knowledge chunk IDs; RAG-on IDs are limited to
+chunks in the source M9 package. The adapter copies deterministic M9 fields into
+the candidate and never changes generated prose or chunk choices. Complete JSON
+returned at Ollama's token boundary remains eligible for ordinary parsing and
+validation; truncated JSON still fails as `ollama_incomplete`. Historical M13
+dataset 1.0.0 replay remains pinned to prompt 1.4.
+
+`LLMQualityDataset` records a semantic version, canonical digest, distinct
+author/reviewer identities, review timestamps, leakage notes, source package
+identities, fixed model/prompt/options/trial count, and reviewed labels for
+facts, findings, uncertainties, recommendations, citations, exclusions, and
+provenance.
+
+`LLMQualityEvaluationReport` retains every planned trial, source and inference
+artifact digest, status/failure, UTC interval, latency, validation issues, and
+available deterministic scores. Failed output remains in the trial and pair
+counts while unavailable candidate metrics stay explicitly missing. Aggregate
+comparisons record RAG-on/off means, paired differences, standard deviation,
+comparable/missing pair counts, direction, and improved, regressed, or
+inconclusive outcome.
+
+## Planned M14–M17 Contracts
 
 The following contracts remain planned. Their concrete schema versions are
 introduced by their owning milestones without changing historical artifacts.

@@ -191,12 +191,18 @@ analysis fixed and records the exact prompt digest, model digest, and options so
 M13 can construct paired trials. Offline tests replace Ollama at the adapter
 boundary.
 
-Ollama uses non-streaming JSON mode rather than treating the nested candidate
-schema as a decoding grammar; the latter proved impractically slow on CPU-only
-verification. Trust still comes from strict parsing and the independent
-validator. For finding-free inputs, the prompt supplies a fixed conservative
-summary and uncertainty framing so the model cannot turn missing findings into
-an unsupported healthy-state claim.
+Prompt 1.5 projects only ordered semantic condition, recommendation, uncertainty,
+and optional knowledge-excerpt inputs. It asks Ollama for compact positional prose
+and optional knowledge-chunk IDs under a dynamically bounded JSON schema. Exact
+array counts and printable, digit-free regex bounds constrain explanations during
+decoding. The adapter checks array lengths and allowed chunk IDs, then attaches
+only immutable M9 identities, numerical claims, analysis citations,
+recommendation values, and uncertainty source text. A length-ended Ollama
+response proceeds only when it is already complete JSON. The unmodified compact
+response remains the raw response; this deterministic assembly is not prose
+repair. The independent validator still decides whether the expanded candidate
+is accepted. Prompt 1.4 remains supported for replay of the M13 dataset 1.0.0
+report.
 
 ### LLM Quality Evaluator
 

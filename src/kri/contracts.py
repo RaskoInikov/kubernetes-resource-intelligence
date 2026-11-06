@@ -1479,7 +1479,7 @@ class InferenceRunArtifact(ContractModel):
 
     schema_version: Literal["1.0"] = SCHEMA_VERSION
     adapter_version: Literal["1.0"] = "1.0"
-    prompt_version: Literal["1.0"] = "1.0"
+    prompt_version: Literal["1.0", "1.1", "1.2", "1.3", "1.4", "1.5"] = "1.5"
     run_id: str
     status: InferenceStatus
     requested_at: datetime
@@ -1607,6 +1607,269 @@ class InferenceRunSummary(ContractModel):
     ended_at: datetime
     issue_count: int = Field(ge=0)
     artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+
+
+class QualityOutcome(StrEnum):
+    """Direction of one paired RAG-on/off quality comparison."""
+
+    IMPROVED = "improved"
+    REGRESSED = "regressed"
+    INCONCLUSIVE = "inconclusive"
+
+
+class ExpectedNumericalFact(ContractModel):
+    """Reviewed numerical fact expected in an M13 explanation."""
+
+    statistic_id: str = Field(min_length=1)
+    value: float = Field(allow_inf_nan=False)
+    unit: str = Field(min_length=1)
+
+
+class ExpectedRecommendation(ContractModel):
+    """Reviewed immutable recommendation expected from M5."""
+
+    recommendation_id: str = Field(min_length=1)
+    resource: str = Field(min_length=1)
+    current_value: str = Field(min_length=1)
+    recommended_value: str = Field(min_length=1)
+
+
+class CitationJudgment(ContractModel):
+    """Reviewed citation permissions and requirements for one output item."""
+
+    target_id: str = Field(min_length=1)
+    required_analysis_ids: tuple[str, ...]
+    allowed_knowledge_ids: tuple[str, ...]
+    required_knowledge_ids: tuple[str, ...] = ()
+
+    @model_validator(mode="after")
+    def required_knowledge_is_allowed(self) -> "CitationJudgment":
+        if not set(self.required_knowledge_ids).issubset(self.allowed_knowledge_ids):
+            raise ValueError("required knowledge citations must be allowed")
+        return self
+
+
+class LLMQualityCase(ContractModel):
+    """One fixed finding-bearing M13 paired evaluation case."""
+
+    case_id: str
+    package_id: str
+    package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    analysis_id: str
+    observation_id: str
+    expected_condition_ids: tuple[str, ...] = Field(min_length=1)
+    expected_facts: tuple[ExpectedNumericalFact, ...] = Field(min_length=1)
+    expected_uncertainties: tuple[str, ...] = Field(min_length=1)
+    expected_recommendations: tuple[ExpectedRecommendation, ...]
+    citation_judgments: tuple[CitationJudgment, ...] = Field(min_length=1)
+    exclusions: tuple[str, ...]
+    provenance: str = Field(min_length=1)
+
+    @field_validator("case_id", "package_id", "analysis_id", "observation_id")
+    @classmethod
+    def quality_case_ids_are_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("quality case IDs must be lowercase DNS labels")
+        return value
+
+    @model_validator(mode="after")
+    def labels_are_unique_and_complete(self) -> "LLMQualityCase":
+        collections = (
+            ([item.statistic_id for item in self.expected_facts], "facts"),
+            (
+                [item.recommendation_id for item in self.expected_recommendations],
+                "recommendations",
+            ),
+            ([item.target_id for item in self.citation_judgments], "citations"),
+        )
+        for values, name in collections:
+            if len(values) != len(set(values)):
+                raise ValueError(f"quality case contains duplicate {name}")
+        expected_targets = set(self.expected_condition_ids) | {
+            item.recommendation_id for item in self.expected_recommendations
+        }
+        if {item.target_id for item in self.citation_judgments} != expected_targets:
+            raise ValueError("citation judgments must cover every expected output item")
+        return self
+
+
+class LLMQualityDataset(ContractModel):
+    """Fixed, reviewed plan and labels for M13 paired evaluation."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    dataset_version: str
+    created_at: datetime
+    author: str = Field(min_length=1)
+    reviewer: str = Field(min_length=1)
+    reviewed_at: datetime
+    leakage_notes: tuple[str, ...]
+    model_name: str = Field(min_length=1)
+    model_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prompt_version: Literal["1.4"] = "1.4"
+    options: InferenceOptions
+    trial_count: int = Field(ge=2, le=20)
+    cases: tuple[LLMQualityCase, ...] = Field(min_length=1)
+
+    @field_validator("dataset_version")
+    @classmethod
+    def quality_dataset_version_is_semantic(cls, value: str) -> str:
+        if SEMANTIC_VERSION_PATTERN.fullmatch(value) is None:
+            raise ValueError("quality dataset version must be semantic")
+        return value
+
+    @field_validator("created_at", "reviewed_at")
+    @classmethod
+    def quality_dataset_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("quality dataset timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def review_and_cases_are_valid(self) -> "LLMQualityDataset":
+        if self.author == self.reviewer:
+            raise ValueError("dataset author and reviewer must be distinct")
+        if self.reviewed_at < self.created_at:
+            raise ValueError("dataset review cannot precede authorship")
+        case_ids = [item.case_id for item in self.cases]
+        if len(case_ids) != len(set(case_ids)):
+            raise ValueError("quality dataset case IDs must be unique")
+        return self
+
+
+class LLMQualityDatasetEnvelope(ContractModel):
+    """Integrity envelope for a fixed M13 dataset."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    dataset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    dataset: LLMQualityDataset
+
+    @model_validator(mode="after")
+    def dataset_digest_matches(self) -> "LLMQualityDatasetEnvelope":
+        encoded = json.dumps(
+            self.dataset.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        if hashlib.sha256(encoded).hexdigest() != self.dataset_sha256:
+            raise ValueError("quality dataset digest does not match")
+        return self
+
+
+class QualityScores(ContractModel):
+    """Deterministic M13 metrics for one inference candidate."""
+
+    validation_success: bool
+    supported_fact_count: int = Field(ge=0)
+    expected_fact_count: int = Field(ge=0)
+    unsupported_claim_count: int = Field(ge=0)
+    generated_claim_count: int = Field(ge=0)
+    supported_fact_rate: float | None = Field(default=None, ge=0, le=1)
+    unsupported_claim_rate: float | None = Field(default=None, ge=0, le=1)
+    correct_citation_count: int = Field(ge=0)
+    generated_citation_count: int = Field(ge=0)
+    required_citation_count: int = Field(ge=0)
+    recalled_citation_count: int = Field(ge=0)
+    citation_precision: float | None = Field(default=None, ge=0, le=1)
+    citation_recall: float | None = Field(default=None, ge=0, le=1)
+    finding_coverage: float = Field(ge=0, le=1)
+    uncertainty_coverage: float = Field(ge=0, le=1)
+    recommendation_consistency: float | None = Field(default=None, ge=0, le=1)
+
+
+class LLMQualityTrial(ContractModel):
+    """One retained member of a paired M13 trial."""
+
+    trial_id: str
+    pair_id: str
+    case_id: str
+    repetition: int = Field(ge=1)
+    rag_mode: RAGMode
+    input_package_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    inference_run_id: str
+    inference_artifact_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    status: InferenceStatus
+    started_at: datetime
+    ended_at: datetime
+    latency_seconds: float = Field(ge=0, allow_inf_nan=False)
+    failure_code: str | None = None
+    validation_issue_codes: tuple[str, ...]
+    scores: QualityScores | None
+
+    @field_validator("started_at", "ended_at")
+    @classmethod
+    def quality_trial_timestamps_are_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("quality trial timestamps must include a timezone")
+        return value.astimezone(UTC)
+
+
+class QualityMetricComparison(ContractModel):
+    """Aggregate paired difference and variability for one metric."""
+
+    metric: str = Field(pattern=r"^[a-z0-9_]+$")
+    higher_is_better: bool
+    total_pair_count: int = Field(ge=0)
+    comparable_pair_count: int = Field(ge=0)
+    missing_pair_count: int = Field(ge=0)
+    rag_off_mean: float | None = Field(default=None, allow_inf_nan=False)
+    rag_on_mean: float | None = Field(default=None, allow_inf_nan=False)
+    mean_paired_difference: float | None = Field(default=None, allow_inf_nan=False)
+    paired_difference_stdev: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    outcome: QualityOutcome
+
+
+class LLMQualityEvaluationReport(ContractModel):
+    """Reproducible M13 paired quality report."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    evaluator_version: Literal["1.0"] = "1.0"
+    evaluation_id: str
+    created_at: datetime
+    evidence_class: Literal["offline-recorded", "fresh-real"]
+    dataset_version: str
+    dataset_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    model_name: str
+    model_digest: str = Field(pattern=r"^[0-9a-f]{64}$")
+    prompt_version: Literal["1.4"] = "1.4"
+    options: InferenceOptions
+    environment: dict[str, str]
+    trials: tuple[LLMQualityTrial, ...] = Field(min_length=1)
+    comparisons: tuple[QualityMetricComparison, ...] = Field(min_length=1)
+
+    @field_validator("evaluation_id")
+    @classmethod
+    def quality_evaluation_id_is_safe(cls, value: str) -> str:
+        if OBSERVATION_ID_PATTERN.fullmatch(value) is None:
+            raise ValueError("quality evaluation ID must be a lowercase DNS label")
+        return value
+
+    @field_validator("created_at")
+    @classmethod
+    def quality_evaluation_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("quality evaluation timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+
+class LLMQualityEvaluationEnvelope(ContractModel):
+    """Immutable digest envelope for one M13 report."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report: LLMQualityEvaluationReport
+
+    @model_validator(mode="after")
+    def report_digest_matches(self) -> "LLMQualityEvaluationEnvelope":
+        encoded = json.dumps(
+            self.report.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        if hashlib.sha256(encoded).hexdigest() != self.report_sha256:
+            raise ValueError("quality evaluation report digest does not match")
+        return self
 
 
 class MetricsRangeRequest(ContractModel):
