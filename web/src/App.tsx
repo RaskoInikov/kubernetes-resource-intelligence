@@ -284,6 +284,9 @@ export function App({ client = api }: { client?: PipelineApi }) {
                 <div><dt>Termination</dt><dd>{experiment.termination_reason ? `${experiment.termination_reason} · ${experiment.termination_source}` : "pending"}</dd></div>
               </dl>
               {experiment.termination_message && <p className="hint">{experiment.termination_message}</p>}
+              {experiment.load_summary && <p className="hint">
+                Client outcomes: {experiment.load_summary.requests_succeeded} succeeded · {experiment.load_summary.request_failures} failed · {experiment.load_summary.request_timeouts} timed out · {experiment.load_summary.stuck_workers} stuck
+              </p>}
             </div>}
             {experiment && <JsonDetails label="Raw experiment response" value={experiment} />}
           </article>

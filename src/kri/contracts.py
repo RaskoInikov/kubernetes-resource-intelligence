@@ -82,6 +82,53 @@ class LoadConfiguration(ContractModel):
     duration_seconds: int = Field(ge=1, le=3600)
 
 
+class LoadExecutionStatus(StrEnum):
+    """Whether the generator itself completed its bounded execution."""
+
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class LoadExecutionSummary(ContractModel):
+    """Client outcomes kept separate from generator execution failure."""
+
+    schema_version: Literal["1.1"] = "1.1"
+    execution_status: LoadExecutionStatus
+    execution_failure_reason: Literal["stuck_worker"] | None = None
+    exit_code: int = Field(ge=0, le=255)
+    requests_started: int = Field(ge=0)
+    requests_completed: int = Field(ge=0)
+    requests_succeeded: int = Field(ge=0)
+    request_failures: int = Field(ge=0)
+    request_timeouts: int = Field(ge=0)
+    stuck_workers: int = Field(ge=0)
+
+    @model_validator(mode="after")
+    def execution_and_counts_are_consistent(self) -> "LoadExecutionSummary":
+        if self.requests_completed != (
+            self.requests_succeeded + self.request_failures + self.request_timeouts
+        ):
+            raise ValueError("completed requests must equal all client outcomes")
+        if self.requests_started != self.requests_completed + self.stuck_workers:
+            raise ValueError("started requests must equal completed plus stuck workers")
+        if self.execution_status is LoadExecutionStatus.COMPLETED:
+            if (
+                self.exit_code != 0
+                or self.execution_failure_reason is not None
+                or self.stuck_workers != 0
+            ):
+                raise ValueError(
+                    "completed execution must exit zero without stuck workers"
+                )
+        elif (
+            self.exit_code != 4
+            or self.execution_failure_reason != "stuck_worker"
+            or self.stuck_workers == 0
+        ):
+            raise ValueError("failed execution must identify one or more stuck workers")
+        return self
+
+
 class ExperimentState(StrEnum):
     """Persisted experiment lifecycle state."""
 
@@ -101,7 +148,7 @@ class TerminationSource(StrEnum):
 class ExperimentRecord(ContractModel):
     """Traceable state for one load Job."""
 
-    schema_version: Literal["1.0", "1.1"] = "1.1"
+    schema_version: Literal["1.0", "1.1", "1.2"] = "1.2"
     experiment_id: str
     workload_configuration: WorkloadConfiguration
     load_configuration: LoadConfiguration
@@ -113,6 +160,7 @@ class ExperimentRecord(ContractModel):
     termination_reason: str | None = None
     termination_message: str | None = None
     termination_source: TerminationSource | None = None
+    load_summary: LoadExecutionSummary | None = None
 
     @field_validator("job_uid", "termination_reason", "termination_message")
     @classmethod
@@ -136,6 +184,8 @@ class ExperimentRecord(ContractModel):
             )
         if self.start_timestamp.tzinfo is None:
             raise ValueError("start timestamp must include a timezone")
+        if self.schema_version != "1.2" and self.load_summary is not None:
+            raise ValueError("load summary requires experiment schema version 1.2")
         if (
             self.lifecycle_state is ExperimentState.RUNNING
             and self.end_timestamp is not None
@@ -150,6 +200,11 @@ class ExperimentRecord(ContractModel):
             value is not None for value in terminal_metadata
         ):
             raise ValueError("a running experiment cannot have termination metadata")
+        if (
+            self.lifecycle_state is ExperimentState.RUNNING
+            and self.load_summary is not None
+        ):
+            raise ValueError("a running experiment cannot have a load summary")
         if self.lifecycle_state is not ExperimentState.RUNNING:
             if self.end_timestamp is None or self.end_timestamp.tzinfo is None:
                 raise ValueError(
@@ -157,19 +212,44 @@ class ExperimentRecord(ContractModel):
                 )
             if self.end_timestamp < self.start_timestamp:
                 raise ValueError("end timestamp cannot precede start timestamp")
-            if self.schema_version == "1.1" and (
+            if self.schema_version in {"1.1", "1.2"} and (
                 self.termination_reason is None or self.termination_source is None
             ):
                 raise ValueError(
                     "a version 1.1 terminal experiment requires reason and source"
                 )
-            if self.schema_version == "1.1" and (
+            if self.schema_version in {"1.1", "1.2"} and (
                 self.termination_source is TerminationSource.KUBERNETES
                 and (self.job_uid is None or self.job_start_timestamp is None)
             ):
                 raise ValueError(
                     "a Kubernetes terminal experiment requires Job identity and start"
                 )
+            if (
+                self.schema_version == "1.2"
+                and self.lifecycle_state is ExperimentState.SUCCEEDED
+                and self.load_summary is None
+            ):
+                raise ValueError(
+                    "a succeeded version 1.2 experiment requires a load summary"
+                )
+            if self.load_summary is not None:
+                if (
+                    self.lifecycle_state is ExperimentState.SUCCEEDED
+                    and self.load_summary.execution_status
+                    is not LoadExecutionStatus.COMPLETED
+                ):
+                    raise ValueError(
+                        "a succeeded experiment requires completed execution"
+                    )
+                if (
+                    self.lifecycle_state is ExperimentState.FAILED
+                    and self.load_summary.execution_status
+                    is not LoadExecutionStatus.FAILED
+                ):
+                    raise ValueError(
+                        "a failed experiment cannot retain completed execution"
+                    )
         if (
             self.job_start_timestamp is not None
             and self.end_timestamp is not None

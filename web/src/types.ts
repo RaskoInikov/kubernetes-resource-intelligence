@@ -17,6 +17,19 @@ export interface LoadConfiguration {
   duration_seconds: number;
 }
 
+export interface LoadExecutionSummary extends JsonObject {
+  schema_version: "1.1";
+  execution_status: "completed" | "failed";
+  execution_failure_reason: "stuck_worker" | null;
+  exit_code: number;
+  requests_started: number;
+  requests_completed: number;
+  requests_succeeded: number;
+  request_failures: number;
+  request_timeouts: number;
+  stuck_workers: number;
+}
+
 export interface WorkloadIdentity {
   cluster: string;
   namespace: string;
@@ -40,7 +53,7 @@ export interface WorkloadSnapshot extends JsonObject {
 }
 
 export interface ExperimentRecord extends JsonObject {
-  schema_version: "1.0" | "1.1";
+  schema_version: "1.0" | "1.1" | "1.2";
   experiment_id: string;
   lifecycle_state: "running" | "stopped" | "succeeded" | "failed";
   start_timestamp: string;
@@ -50,6 +63,7 @@ export interface ExperimentRecord extends JsonObject {
   termination_reason: string | null;
   termination_message: string | null;
   termination_source: "kubernetes" | "controller" | null;
+  load_summary: LoadExecutionSummary | null;
 }
 
 export interface MetricSample {

@@ -154,6 +154,7 @@ function fakeApi(overrides: Partial<PipelineApi> = {}): PipelineApi {
       termination_reason: "UserStopped",
       termination_message: "Load Job deleted by an explicit stop request.",
       termination_source: "controller",
+      load_summary: null,
     }),
     queryMetrics: vi.fn(),
     createObservation: vi.fn().mockResolvedValue(observation),
@@ -182,6 +183,7 @@ describe("M11 pipeline interface", () => {
       termination_reason: null,
       termination_message: null,
       termination_source: null,
+      load_summary: null,
     } as const;
     const completed = {
       ...running,
@@ -192,6 +194,19 @@ describe("M11 pipeline interface", () => {
       termination_reason: "CompletionsReached",
       termination_message: "Job completed",
       termination_source: "kubernetes",
+      schema_version: "1.2",
+      load_summary: {
+        schema_version: "1.1",
+        execution_status: "completed",
+        execution_failure_reason: null,
+        exit_code: 0,
+        requests_started: 100,
+        requests_completed: 100,
+        requests_succeeded: 96,
+        request_failures: 1,
+        request_timeouts: 3,
+        stuck_workers: 0,
+      },
     } as const;
     const client = fakeApi({
       startLoad: vi.fn().mockResolvedValue(running),
@@ -207,6 +222,9 @@ describe("M11 pipeline interface", () => {
     expect(screen.getByTestId("experiment-status")).toHaveTextContent("succeeded");
     expect(screen.getByTestId("experiment-status")).toHaveTextContent(
       "CompletionsReached · kubernetes",
+    );
+    expect(screen.getByTestId("experiment-status")).toHaveTextContent(
+      "Client outcomes: 96 succeeded · 1 failed · 3 timed out · 0 stuck",
     );
     expect(screen.getByTestId("experiment-status")).toHaveTextContent(
       "2026-11-01T10:01:00Z",
@@ -227,6 +245,7 @@ describe("M11 pipeline interface", () => {
       termination_reason: null,
       termination_message: null,
       termination_source: null,
+      load_summary: null,
     } as const;
     const failure = new ApiError(
       "Refresh load",

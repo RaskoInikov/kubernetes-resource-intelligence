@@ -14,6 +14,8 @@ from kri.contracts import (
     ExperimentRecord,
     ExperimentState,
     LoadConfiguration,
+    LoadExecutionStatus,
+    LoadExecutionSummary,
     TerminationSource,
     WorkloadConfiguration,
 )
@@ -99,6 +101,8 @@ class KubernetesClient(Protocol):
 
     def get(self, kind: str, name: str) -> dict[str, Any]: ...
 
+    def get_job_pods(self, job_name: str) -> tuple[dict[str, Any], ...]: ...
+
 
 class KubectlClient:
     """Invoke kubectl with an explicit context and namespace on every call."""
@@ -141,6 +145,26 @@ class KubectlClient:
         if not isinstance(value, dict):
             raise KubernetesCommandError("kubectl returned a non-object JSON response")
         return value
+
+    def get_job_pods(self, job_name: str) -> tuple[dict[str, Any], ...]:
+        _validate_reference("job", job_name)
+        output = self._run(
+            [
+                "get",
+                "pods",
+                "--selector",
+                f"job-name={job_name}",
+                "--output",
+                "json",
+            ]
+        )
+        value: object = json.loads(output)
+        if not isinstance(value, dict) or not isinstance(value.get("items"), list):
+            raise KubernetesCommandError("kubectl returned an invalid Pod list")
+        items = value["items"]
+        if not all(isinstance(item, dict) for item in items):
+            raise KubernetesCommandError("kubectl returned a non-object Pod")
+        return tuple(items)
 
 
 class ExperimentStore:
@@ -293,6 +317,7 @@ def load_job_resource(
         {"name": "CONCURRENCY", "value": str(configuration.concurrency)},
         {"name": "REQUEST_RATE", "value": str(configuration.request_rate)},
         {"name": "DURATION_SECONDS", "value": str(configuration.duration_seconds)},
+        {"name": "TERMINATION_LOG_PATH", "value": "/dev/termination-log"},
     ]
     return {
         "apiVersion": "batch/v1",
@@ -310,7 +335,9 @@ def load_job_resource(
                         {
                             "name": "load-generator",
                             "image": image,
-                            "imagePullPolicy": "IfNotPresent",
+                            "imagePullPolicy": "Never",
+                            "terminationMessagePath": "/dev/termination-log",
+                            "terminationMessagePolicy": "File",
                             "command": ["python", "-m", "kri_workload.load"],
                             "env": environment,
                             "resources": {
@@ -404,6 +431,94 @@ class WorkloadController:
             source=TerminationSource.CONTROLLER,
         )
 
+    def _terminal_load_summary(
+        self,
+        job_name: str,
+        job_uid: str,
+        state: ExperimentState,
+    ) -> LoadExecutionSummary | None:
+        pods = self.kubernetes.get_job_pods(job_name)
+        if len(pods) != 1:
+            if state is ExperimentState.SUCCEEDED:
+                raise KubernetesCommandError(
+                    "succeeded Job must have exactly one Pod for load evidence"
+                )
+            return None
+        pod = pods[0]
+        metadata = pod.get("metadata")
+        if not isinstance(metadata, dict):
+            raise KubernetesCommandError("load Pod metadata is not an object")
+        owners = metadata.get("ownerReferences")
+        if not isinstance(owners, list) or not any(
+            isinstance(owner, dict)
+            and owner.get("kind") == "Job"
+            and owner.get("uid") == job_uid
+            and owner.get("controller") is True
+            for owner in owners
+        ):
+            raise KubernetesCommandError("load Pod is not owned by the terminal Job")
+        status = pod.get("status")
+        if not isinstance(status, dict):
+            raise KubernetesCommandError("load Pod status is not an object")
+        container_statuses = status.get("containerStatuses")
+        if not isinstance(container_statuses, list):
+            if state is ExperimentState.SUCCEEDED:
+                raise KubernetesCommandError("succeeded Job has no container status")
+            return None
+        matches = [
+            item
+            for item in container_statuses
+            if isinstance(item, dict) and item.get("name") == "load-generator"
+        ]
+        if len(matches) != 1:
+            raise KubernetesCommandError(
+                "terminal load Pod must have one load-generator status"
+            )
+        state_value = matches[0].get("state")
+        terminated = (
+            state_value.get("terminated") if isinstance(state_value, dict) else None
+        )
+        if not isinstance(terminated, dict):
+            if state is ExperimentState.SUCCEEDED:
+                raise KubernetesCommandError(
+                    "succeeded Job has no terminated container"
+                )
+            return None
+        exit_code = terminated.get("exitCode")
+        message = terminated.get("message")
+        if (
+            not isinstance(exit_code, int)
+            or not isinstance(message, str)
+            or not message.strip()
+        ):
+            if state is ExperimentState.SUCCEEDED:
+                raise KubernetesCommandError(
+                    "succeeded Job has no load execution summary"
+                )
+            return None
+        try:
+            summary = LoadExecutionSummary.model_validate_json(message)
+        except ValueError as error:
+            if state is ExperimentState.SUCCEEDED:
+                raise KubernetesCommandError(
+                    "succeeded Job has an invalid load execution summary"
+                ) from error
+            return None
+        if summary.exit_code != exit_code:
+            raise KubernetesCommandError(
+                "load summary exit code does not match the container"
+            )
+        expected = (
+            LoadExecutionStatus.COMPLETED
+            if state is ExperimentState.SUCCEEDED
+            else LoadExecutionStatus.FAILED
+        )
+        if summary.execution_status is not expected:
+            raise KubernetesCommandError(
+                "load execution status does not match the Job lifecycle"
+            )
+        return summary
+
     def sync_load(self, experiment_id: str) -> ExperimentRecord:
         record = self.store.load(experiment_id)
         if record.lifecycle_state is not ExperimentState.RUNNING:
@@ -439,7 +554,7 @@ class WorkloadController:
             raise KubernetesCommandError("Job has conflicting terminal conditions")
 
         updates = {
-            "schema_version": "1.1",
+            "schema_version": "1.2",
             "job_uid": uid or record.job_uid,
             "job_start_timestamp": start_timestamp or record.job_start_timestamp,
         }
@@ -466,15 +581,22 @@ class WorkloadController:
             default_reason = (
                 "Complete" if state is ExperimentState.SUCCEEDED else "Failed"
             )
+            reason = (
+                _optional_status_text(condition.get("reason"), "reason")
+                or default_reason
+            )
+            message = _optional_status_text(condition.get("message"), "message")
+            summary = self._terminal_load_summary(
+                f"kri-load-{experiment_id}", uid, state
+            )
             return self._finish(
                 record,
                 state,
                 end_timestamp=end_timestamp,
-                reason=_optional_status_text(condition.get("reason"), "reason")
-                or default_reason,
-                message=_optional_status_text(condition.get("message"), "message"),
+                reason=reason,
+                message=message,
                 source=TerminationSource.KUBERNETES,
-                updates=updates,
+                updates={**updates, "load_summary": summary},
             )
         return self._save_running_metadata(record, updates)
 
@@ -503,7 +625,7 @@ class WorkloadController:
             {
                 **record.model_dump(),
                 **(updates or {}),
-                "schema_version": "1.1",
+                "schema_version": "1.2",
                 "end_timestamp": end_timestamp,
                 "lifecycle_state": state,
                 "termination_reason": reason,

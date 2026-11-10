@@ -1,14 +1,25 @@
 """Offline tests for the disposable application's image runtime."""
 
+import json
 from http import HTTPStatus
 from io import BytesIO
+from pathlib import Path
+from threading import Event
 from time import monotonic, sleep
-from typing import Any
+from typing import Any, cast
+from urllib.error import URLError
 
 import pytest
 
 from deploy.workload import app, load
 from deploy.workload.metrics import HttpMetrics
+
+
+def _load_summary(capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
+    return cast(
+        dict[str, object],
+        json.loads(capsys.readouterr().out.strip().splitlines()[-1]),
+    )
 
 
 def _handle(
@@ -141,6 +152,7 @@ def test_load_request_rejects_http_failure(monkeypatch: pytest.MonkeyPatch) -> N
 
 def test_load_runner_reports_success_and_failure(
     monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
 ) -> None:
     environment = {
         "TARGET_URL": "http://target.test/work",
@@ -155,12 +167,29 @@ def test_load_runner_reports_success_and_failure(
         load, "send_request", lambda target, mode, timeout_seconds: None
     )
     assert load.run() == 0
+    success = _load_summary(capsys)
+    assert success["schema_version"] == "1.1"
+    assert success["execution_status"] == "completed"
+    assert success["execution_failure_reason"] is None
+    assert success["exit_code"] == 0
+    assert success["requests_started"] == success["requests_succeeded"]
+    assert success["requests_completed"] == success["requests_started"]
+    assert success["request_failures"] == 0
+    assert success["request_timeouts"] == 0
+    assert success["stuck_workers"] == 0
 
     def fail(*args: Any) -> None:
         raise RuntimeError("target failed")
 
     monkeypatch.setattr(load, "send_request", fail)
-    assert load.run() == 1
+    assert load.run() == 0
+    failure = _load_summary(capsys)
+    assert failure["execution_status"] == "completed"
+    assert failure["execution_failure_reason"] is None
+    assert failure["exit_code"] == 0
+    assert failure["request_failures"] == failure["requests_started"]
+    assert failure["request_timeouts"] == 0
+    assert failure["stuck_workers"] == 0
 
     monkeypatch.setenv("WORKLOAD_MODE", "unknown")
     with pytest.raises(ValueError, match="WORKLOAD_MODE"):
@@ -170,6 +199,50 @@ def test_load_runner_reports_success_and_failure(
     monkeypatch.setenv("CONCURRENCY", "0")
     with pytest.raises(ValueError, match="CONCURRENCY"):
         load.run()
+
+
+@pytest.mark.parametrize(
+    ("error", "outcome"),
+    [
+        (TimeoutError("direct timeout"), "request_timeout"),
+        (URLError(TimeoutError("wrapped timeout")), "request_timeout"),
+        (URLError("dns failure"), "request_failure"),
+    ],
+)
+def test_load_runner_distinguishes_timeouts_from_other_failures(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    error: Exception,
+    outcome: str,
+) -> None:
+    environment = {
+        "TARGET_URL": "http://target.test/work",
+        "WORKLOAD_MODE": "cpu",
+        "CONCURRENCY": "1",
+        "REQUEST_RATE": "1000",
+        "DURATION_SECONDS": "0.001",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+
+    def fail(*args: Any) -> None:
+        raise error
+
+    monkeypatch.setattr(load, "send_request", fail)
+
+    assert load.run() == 0
+    summary = _load_summary(capsys)
+    assert summary["execution_status"] == "completed"
+    assert summary["execution_failure_reason"] is None
+    assert summary["exit_code"] == 0
+    expected_timeouts = (
+        summary["requests_started"] if outcome == "request_timeout" else 0
+    )
+    expected_failures = (
+        summary["requests_started"] if outcome == "request_failure" else 0
+    )
+    assert summary["request_timeouts"] == expected_timeouts
+    assert summary["request_failures"] == expected_failures
 
 
 def test_load_runner_bounds_in_flight_work_and_shutdown_time(
@@ -202,3 +275,114 @@ def test_load_runner_bounds_in_flight_work_and_shutdown_time(
     assert 1 <= len(timeouts) <= 2
     assert all(0 < timeout <= 0.05 for timeout in timeouts)
     assert elapsed < 0.15
+
+
+def test_load_runner_does_not_wait_forever_for_a_stuck_request(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    environment = {
+        "TARGET_URL": "http://target.test/work",
+        "WORKLOAD_MODE": "mixed",
+        "CONCURRENCY": "1",
+        "REQUEST_RATE": "10000",
+        "DURATION_SECONDS": "0.02",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(load, "SHUTDOWN_GRACE_SECONDS", 0.02)
+    release = Event()
+    started = Event()
+
+    def stuck_request(target: str, mode: str, timeout_seconds: float) -> None:
+        started.set()
+        release.wait(timeout=1)
+
+    monkeypatch.setattr(load, "send_request", stuck_request)
+
+    before = monotonic()
+    try:
+        result = load.run()
+    finally:
+        release.set()
+    elapsed = monotonic() - before
+
+    assert started.is_set()
+    assert result == load.EXIT_STUCK_WORKER
+    assert elapsed < 0.15
+    summary = _load_summary(capsys)
+    assert summary["execution_status"] == "failed"
+    assert summary["execution_failure_reason"] == "stuck_worker"
+    assert summary["exit_code"] == load.EXIT_STUCK_WORKER
+    assert summary["requests_started"] == 1
+    assert summary["requests_completed"] == 0
+    assert summary["stuck_workers"] == 1
+
+
+def test_load_runner_preserves_client_outcomes_during_execution_failure(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+) -> None:
+    environment = {
+        "TARGET_URL": "http://target.test/work",
+        "WORKLOAD_MODE": "mixed",
+        "CONCURRENCY": "3",
+        "REQUEST_RATE": "10000",
+        "DURATION_SECONDS": "0.02",
+    }
+    for name, value in environment.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(load, "SHUTDOWN_GRACE_SECONDS", 0.02)
+    release = Event()
+    calls = 0
+
+    def mixed_failure(target: str, mode: str, timeout_seconds: float) -> None:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise RuntimeError("request failed")
+        if calls == 2:
+            raise TimeoutError("request timed out")
+        release.wait(timeout=1)
+
+    monkeypatch.setattr(load, "send_request", mixed_failure)
+
+    try:
+        result = load.run()
+    finally:
+        release.set()
+
+    assert result == load.EXIT_STUCK_WORKER
+    summary = _load_summary(capsys)
+    assert summary["execution_status"] == "failed"
+    assert summary["execution_failure_reason"] == "stuck_worker"
+    assert summary["exit_code"] == load.EXIT_STUCK_WORKER
+    assert summary["request_failures"] == 1
+    assert summary["request_timeouts"] == 1
+    assert summary["stuck_workers"] == 3
+    assert summary["requests_started"] == cast(int, summary["requests_completed"]) + 3
+
+
+def test_load_runner_writes_identical_explicit_termination_log(
+    monkeypatch: pytest.MonkeyPatch,
+    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path,
+) -> None:
+    termination_log = tmp_path / "termination.log"
+    for name, value in {
+        "TARGET_URL": "http://target.test/work",
+        "WORKLOAD_MODE": "cpu",
+        "CONCURRENCY": "1",
+        "REQUEST_RATE": "1000",
+        "DURATION_SECONDS": "0.001",
+        "TERMINATION_LOG_PATH": str(termination_log),
+    }.items():
+        monkeypatch.setenv(name, value)
+    monkeypatch.setattr(
+        load, "send_request", lambda target, mode, timeout_seconds: None
+    )
+
+    assert load.run() == 0
+
+    stdout = capsys.readouterr().out.strip()
+    assert termination_log.read_text(encoding="utf-8").strip() == stdout

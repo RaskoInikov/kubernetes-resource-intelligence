@@ -10,6 +10,7 @@ from kri.contracts import (
     ExperimentRecord,
     ExperimentState,
     LoadConfiguration,
+    LoadExecutionSummary,
     WorkloadConfiguration,
     WorkloadMode,
 )
@@ -32,6 +33,22 @@ def load() -> LoadConfiguration:
         request_rate=10.5,
         duration_seconds=30,
     )
+
+
+def load_summary(**updates: object) -> LoadExecutionSummary:
+    values: dict[str, object] = {
+        "execution_status": "completed",
+        "execution_failure_reason": None,
+        "exit_code": 0,
+        "requests_started": 12,
+        "requests_completed": 12,
+        "requests_succeeded": 10,
+        "request_failures": 1,
+        "request_timeouts": 1,
+        "stuck_workers": 0,
+    }
+    values.update(updates)
+    return LoadExecutionSummary.model_validate(values)
 
 
 def test_valid_contracts_are_versioned_and_immutable() -> None:
@@ -90,6 +107,44 @@ def test_invalid_load_configuration_is_rejected(values: dict[str, object]) -> No
         LoadConfiguration.model_validate(data)
 
 
+@pytest.mark.parametrize(
+    "updates",
+    [
+        {"requests_completed": 11},
+        {"requests_started": 13},
+        {"exit_code": 4},
+        {"execution_failure_reason": "stuck_worker"},
+        {"stuck_workers": 1, "requests_started": 13},
+        {
+            "execution_status": "failed",
+            "execution_failure_reason": "stuck_worker",
+            "stuck_workers": 1,
+            "requests_started": 13,
+            "exit_code": 0,
+        },
+    ],
+)
+def test_invalid_load_execution_summary_is_rejected(
+    updates: dict[str, object],
+) -> None:
+    with pytest.raises(ValidationError):
+        load_summary(**updates)
+
+
+def test_stuck_worker_is_an_execution_failure_with_preserved_client_outcomes() -> None:
+    summary = load_summary(
+        execution_status="failed",
+        execution_failure_reason="stuck_worker",
+        exit_code=4,
+        requests_started=13,
+        stuck_workers=1,
+    )
+
+    assert summary.exit_code == 4
+    assert summary.request_failures == 1
+    assert summary.request_timeouts == 1
+
+
 def test_experiment_lifecycle_contract() -> None:
     started = datetime(2026, 10, 31, tzinfo=UTC)
     record = ExperimentRecord(
@@ -108,6 +163,7 @@ def test_experiment_lifecycle_contract() -> None:
             "lifecycle_state": ExperimentState.SUCCEEDED,
             "termination_reason": "Complete",
             "termination_source": "kubernetes",
+            "load_summary": load_summary(),
         }
     )
 
@@ -120,9 +176,56 @@ def test_experiment_lifecycle_contract() -> None:
             "schema_version": "1.0",
             "termination_reason": None,
             "termination_source": None,
+            "load_summary": None,
         }
     )
     assert legacy.schema_version == "1.0"
+
+
+def test_experiment_load_summary_lifecycle_guards() -> None:
+    started = datetime(2026, 10, 31, tzinfo=UTC)
+    completed = load_summary()
+    failed = load_summary(
+        execution_status="failed",
+        execution_failure_reason="stuck_worker",
+        exit_code=4,
+        requests_started=13,
+        stuck_workers=1,
+    )
+    base: dict[str, object] = {
+        "experiment_id": "exp-summary",
+        "workload_configuration": workload(),
+        "load_configuration": load(),
+        "start_timestamp": started,
+        "job_uid": "job-uid",
+        "job_start_timestamp": started,
+        "end_timestamp": started + timedelta(seconds=30),
+        "termination_reason": "Complete",
+        "termination_source": "kubernetes",
+    }
+
+    invalid = (
+        {
+            **base,
+            "schema_version": "1.1",
+            "lifecycle_state": "succeeded",
+            "load_summary": completed,
+        },
+        {
+            **base,
+            "lifecycle_state": "running",
+            "end_timestamp": None,
+            "termination_reason": None,
+            "termination_source": None,
+            "load_summary": completed,
+        },
+        {**base, "lifecycle_state": "succeeded", "load_summary": None},
+        {**base, "lifecycle_state": "succeeded", "load_summary": failed},
+        {**base, "lifecycle_state": "failed", "load_summary": completed},
+    )
+    for value in invalid:
+        with pytest.raises(ValidationError):
+            ExperimentRecord.model_validate(value)
 
 
 @pytest.mark.parametrize(

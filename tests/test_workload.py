@@ -56,11 +56,59 @@ def job(status: dict[str, Any] | None = None) -> dict[str, Any]:
     }
 
 
+def load_summary(
+    *,
+    failures: int = 0,
+    timeouts: int = 0,
+    stuck_workers: int = 0,
+) -> dict[str, Any]:
+    completed = 10 + failures + timeouts
+    return {
+        "schema_version": "1.1",
+        "execution_status": "failed" if stuck_workers else "completed",
+        "execution_failure_reason": "stuck_worker" if stuck_workers else None,
+        "exit_code": 4 if stuck_workers else 0,
+        "requests_started": completed + stuck_workers,
+        "requests_completed": completed,
+        "requests_succeeded": 10,
+        "request_failures": failures,
+        "request_timeouts": timeouts,
+        "stuck_workers": stuck_workers,
+    }
+
+
+def load_pod(
+    *,
+    job_uid: str = "job-uid-1",
+    summary: dict[str, Any] | None = None,
+) -> dict[str, Any]:
+    value = summary or load_summary()
+    return {
+        "metadata": {
+            "ownerReferences": [{"kind": "Job", "uid": job_uid, "controller": True}]
+        },
+        "status": {
+            "containerStatuses": [
+                {
+                    "name": "load-generator",
+                    "state": {
+                        "terminated": {
+                            "exitCode": value["exit_code"],
+                            "message": json.dumps(value),
+                        }
+                    },
+                }
+            ]
+        },
+    }
+
+
 class FakeKubernetes:
     def __init__(self) -> None:
         self.applied: list[list[dict[str, Any]]] = []
         self.deleted: list[tuple[str, str]] = []
         self.objects: dict[tuple[str, str], dict[str, Any]] = {}
+        self.pods: dict[str, tuple[dict[str, Any], ...]] = {}
         self.apply_error: KubernetesCommandError | None = None
 
     def apply(self, resources: Sequence[dict[str, Any]]) -> None:
@@ -73,6 +121,9 @@ class FakeKubernetes:
 
     def get(self, kind: str, name: str) -> dict[str, Any]:
         return self.objects[(kind, name)]
+
+    def get_job_pods(self, job_name: str) -> tuple[dict[str, Any], ...]:
+        return self.pods.get(job_name, ())
 
 
 def test_application_resources_are_scoped_and_hardened() -> None:
@@ -108,6 +159,11 @@ def test_load_job_is_independent_and_bounded() -> None:
     assert spec["activeDeadlineSeconds"] == 80
     assert environment["WORKLOAD_MODE"] == "cpu"
     assert environment["REQUEST_RATE"] == "12.5"
+    assert container["image"] == "kri:test"
+    assert container["imagePullPolicy"] == "Never"
+    assert environment["TERMINATION_LOG_PATH"] == "/dev/termination-log"
+    assert container["terminationMessagePath"] == "/dev/termination-log"
+    assert container["terminationMessagePolicy"] == "File"
     assert spec["template"]["spec"]["restartPolicy"] == "Never"
     assert all(item["kind"] != "Deployment" for item in [job])
 
@@ -115,12 +171,24 @@ def test_load_job_is_independent_and_bounded() -> None:
         load_job_resource("BAD", load(), "kri:test")
 
 
+def test_application_image_can_still_use_if_not_present_pull_policy() -> None:
+    deployment, _ = application_resources(workload(), "kri:test")
+    container = deployment["spec"]["template"]["spec"]["containers"][0]
+
+    assert container["imagePullPolicy"] == "IfNotPresent"
+
+
 def test_kubectl_client_always_scopes_commands(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[list[str], str | None]] = []
 
     def run(command: list[str], **kwargs: Any) -> subprocess.CompletedProcess[str]:
         calls.append((command, kwargs.get("input")))
-        output = '{"status":{"succeeded":1}}' if "get" in command else "ok"
+        if "pods" in command:
+            output = '{"items":[{"metadata":{"name":"load-pod"}}]}'
+        elif "get" in command:
+            output = '{"status":{"succeeded":1}}'
+        else:
+            output = "ok"
         return subprocess.CompletedProcess(command, 0, stdout=output, stderr="")
 
     monkeypatch.setattr(subprocess, "run", run)
@@ -128,9 +196,11 @@ def test_kubectl_client_always_scopes_commands(monkeypatch: pytest.MonkeyPatch) 
     client.apply(application_resources(workload(), "kri:test"))
     client.delete("job", "kri-load-exp-test")
     result = client.get("job", "kri-load-exp-test")
+    pods = client.get_job_pods("kri-load-exp-test")
 
     assert result["status"]["succeeded"] == 1
-    assert len(calls) == 3
+    assert pods[0]["metadata"]["name"] == "load-pod"
+    assert len(calls) == 4
     assert all(
         command[:5] == ["kubectl", "--context", "kind-test", "--namespace", "payments"]
         for command, _ in calls
@@ -204,6 +274,19 @@ def test_kubectl_rejects_non_object_json(monkeypatch: pytest.MonkeyPatch) -> Non
         KubectlClient("kind-test", "payments").get("job", "kri-load-exp-safe")
 
 
+@pytest.mark.parametrize("payload", ["{}", '{"items":[1]}'])
+def test_kubectl_rejects_invalid_pod_lists(
+    monkeypatch: pytest.MonkeyPatch, payload: str
+) -> None:
+    monkeypatch.setattr(
+        subprocess,
+        "run",
+        lambda *args, **kwargs: subprocess.CompletedProcess(args, 0, payload, ""),
+    )
+    with pytest.raises(KubernetesCommandError, match="Pod"):
+        KubectlClient("kind-test", "payments").get_job_pods("kri-load-exp-safe")
+
+
 def test_experiment_store_round_trip_and_guards(tmp_path: Path) -> None:
     store = ExperimentStore(tmp_path / "experiments")
     record = ExperimentRecord(
@@ -218,7 +301,7 @@ def test_experiment_store_round_trip_and_guards(tmp_path: Path) -> None:
     assert store.load("exp-test-1") == record
     assert (
         json.loads((store.directory / "exp-test-1.json").read_text())["schema_version"]
-        == "1.1"
+        == "1.2"
     )
     with pytest.raises(ExperimentStoreError, match="already exists"):
         store.create(record)
@@ -366,6 +449,14 @@ def test_controller_syncs_job_state(
     )
     store.create(record)
     kubernetes.objects[("job", "kri-load-exp-sync")] = job(status)
+    if expected is ExperimentState.SUCCEEDED:
+        kubernetes.pods["kri-load-exp-sync"] = (
+            load_pod(summary=load_summary(failures=1, timeouts=2)),
+        )
+    elif expected is ExperimentState.FAILED:
+        kubernetes.pods["kri-load-exp-sync"] = (
+            load_pod(summary=load_summary(stuck_workers=1)),
+        )
 
     synced = controller.sync_load("exp-sync")
 
@@ -376,6 +467,114 @@ def test_controller_syncs_job_state(
         assert synced.end_timestamp is not None
         assert synced.termination_reason == reason
         assert synced.termination_source == "kubernetes"
+        assert synced.load_summary is not None
+
+
+def test_terminal_load_summary_rejects_missing_or_contradictory_evidence(
+    tmp_path: Path,
+) -> None:
+    kubernetes = FakeKubernetes()
+    controller = WorkloadController(kubernetes, ExperimentStore(tmp_path), "kri:test")
+    name = "kri-load-exp-summary"
+
+    with pytest.raises(KubernetesCommandError, match="exactly one Pod"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
+    assert (
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.FAILED)
+        is None
+    )
+
+    malformed: tuple[tuple[dict[str, Any], str], ...] = (
+        ({"metadata": []}, "metadata"),
+        ({"metadata": {"ownerReferences": [1]}}, "not owned"),
+        (
+            {
+                "metadata": {
+                    "ownerReferences": [
+                        {"kind": "Job", "uid": "other", "controller": True}
+                    ]
+                }
+            },
+            "not owned",
+        ),
+        (
+            {
+                "metadata": load_pod()["metadata"],
+                "status": [],
+            },
+            "status",
+        ),
+        (
+            {
+                "metadata": load_pod()["metadata"],
+                "status": {"containerStatuses": []},
+            },
+            "load-generator status",
+        ),
+    )
+    for pod_value, message in malformed:
+        kubernetes.pods[name] = (pod_value,)
+        with pytest.raises(KubernetesCommandError, match=message):
+            controller._terminal_load_summary(
+                name, "job-uid-1", ExperimentState.SUCCEEDED
+            )
+
+    base = load_pod()
+    no_statuses = {**base, "status": {}}
+    kubernetes.pods[name] = (no_statuses,)
+    with pytest.raises(KubernetesCommandError, match="container status"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
+    assert (
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.FAILED)
+        is None
+    )
+
+    unterminated = load_pod()
+    unterminated["status"]["containerStatuses"][0]["state"] = {}
+    kubernetes.pods[name] = (unterminated,)
+    with pytest.raises(KubernetesCommandError, match="terminated container"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
+    assert (
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.FAILED)
+        is None
+    )
+
+    missing_message = load_pod()
+    missing_message["status"]["containerStatuses"][0]["state"]["terminated"] = {
+        "exitCode": 0
+    }
+    kubernetes.pods[name] = (missing_message,)
+    with pytest.raises(KubernetesCommandError, match="no load execution summary"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
+    assert (
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.FAILED)
+        is None
+    )
+
+    invalid_message = load_pod()
+    invalid_message["status"]["containerStatuses"][0]["state"]["terminated"] = {
+        "exitCode": 0,
+        "message": "not-json",
+    }
+    kubernetes.pods[name] = (invalid_message,)
+    with pytest.raises(KubernetesCommandError, match="invalid load execution summary"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
+    assert (
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.FAILED)
+        is None
+    )
+
+    exit_mismatch = load_pod()
+    exit_mismatch["status"]["containerStatuses"][0]["state"]["terminated"][
+        "exitCode"
+    ] = 4
+    kubernetes.pods[name] = (exit_mismatch,)
+    with pytest.raises(KubernetesCommandError, match="exit code"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
+
+    kubernetes.pods[name] = (load_pod(summary=load_summary(stuck_workers=1)),)
+    with pytest.raises(KubernetesCommandError, match="does not match"):
+        controller._terminal_load_summary(name, "job-uid-1", ExperimentState.SUCCEEDED)
 
 
 def test_stop_preserves_a_job_that_already_completed(tmp_path: Path) -> None:
@@ -396,6 +595,7 @@ def test_stop_preserves_a_job_that_already_completed(tmp_path: Path) -> None:
             ],
         }
     )
+    kubernetes.pods["kri-load-exp-race"] = (load_pod(),)
 
     stopped = controller.stop_load("exp-race")
 
