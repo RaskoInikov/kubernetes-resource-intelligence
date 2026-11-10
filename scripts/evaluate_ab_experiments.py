@@ -15,10 +15,16 @@ from statistics import fmean
 from kri.analysis import DeterministicAnalyzer
 from kri.contracts import (
     AnalysisReport,
+    EffectivenessApproval,
+    EffectivenessPlanEnvelope,
+    EffectivenessTrialManifest,
     ExperimentRecord,
     NormalizedMetricSeries,
     ObservationSnapshot,
+    RecommendationEffectivenessReportEnvelope,
+    VerificationStatus,
 )
+from kri.effectiveness import canonical_digest, evaluate_effectiveness
 from kri.observations import ObservationStore
 
 
@@ -413,16 +419,90 @@ def _render_report(baseline: RunEvaluation, candidate: RunEvaluation) -> str:
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--baseline-experiment", required=True, type=Path)
-    parser.add_argument("--baseline-observation", required=True, type=Path)
-    parser.add_argument("--candidate-experiment", required=True, type=Path)
-    parser.add_argument("--candidate-observation", required=True, type=Path)
+    parser.add_argument("--baseline-experiment", type=Path)
+    parser.add_argument("--baseline-observation", type=Path)
+    parser.add_argument("--candidate-experiment", type=Path)
+    parser.add_argument("--candidate-observation", type=Path)
+    parser.add_argument("--m14-plan", type=Path)
+    parser.add_argument("--m14-approval", type=Path)
+    parser.add_argument("--m14-trials", type=Path)
+    parser.add_argument("--report-id")
+    parser.add_argument(
+        "--rollback-status",
+        choices=tuple(VerificationStatus),
+        default=VerificationStatus.NOT_VERIFIED,
+    )
+    parser.add_argument(
+        "--cleanup-status",
+        choices=tuple(VerificationStatus),
+        default=VerificationStatus.NOT_VERIFIED,
+    )
     parser.add_argument("--output", required=True, type=Path)
     return parser
 
 
+def _run_m14(args: argparse.Namespace) -> None:
+    if (
+        args.m14_plan is None
+        or args.m14_approval is None
+        or args.m14_trials is None
+        or args.report_id is None
+    ):
+        raise ValueError(
+            "M14 mode requires --m14-plan, --m14-approval, --m14-trials, "
+            "and --report-id"
+        )
+    plan_envelope = EffectivenessPlanEnvelope.model_validate_json(
+        args.m14_plan.read_text(encoding="utf-8")
+    )
+    manifest = EffectivenessTrialManifest.model_validate_json(
+        args.m14_trials.read_text(encoding="utf-8")
+    )
+    approval = EffectivenessApproval.model_validate_json(
+        args.m14_approval.read_text(encoding="utf-8")
+    )
+    if (
+        manifest.plan_id != plan_envelope.plan.plan_id
+        or manifest.plan_sha256 != plan_envelope.plan_sha256
+    ):
+        raise ValueError("trial manifest does not match the effectiveness plan")
+    report = evaluate_effectiveness(
+        plan_envelope.plan,
+        manifest.trials,
+        report_id=args.report_id,
+        approval=approval,
+        rollback_status=VerificationStatus(args.rollback_status),
+        cleanup_status=VerificationStatus(args.cleanup_status),
+    )
+    envelope = RecommendationEffectivenessReportEnvelope(
+        report_sha256=canonical_digest(report), report=report
+    )
+    if args.output.exists():
+        raise ValueError(f"refusing to overwrite M14 report: {args.output}")
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    temporary = args.output.with_suffix(args.output.suffix + ".tmp")
+    temporary.write_text(envelope.model_dump_json(indent=2) + "\n", encoding="utf-8")
+    temporary.replace(args.output)
+
+
 def main() -> int:
     args = _parser().parse_args()
+    if args.m14_plan is not None:
+        _run_m14(args)
+        print(f"wrote {args.output}")
+        return 0
+    legacy_paths = (
+        args.baseline_experiment,
+        args.baseline_observation,
+        args.candidate_experiment,
+        args.candidate_observation,
+    )
+    if any(path is None for path in legacy_paths):
+        raise ValueError("legacy mode requires all baseline and candidate paths")
+    assert args.baseline_experiment is not None
+    assert args.baseline_observation is not None
+    assert args.candidate_experiment is not None
+    assert args.candidate_observation is not None
     baseline = _evaluate(args.baseline_experiment, args.baseline_observation)
     candidate = _evaluate(args.candidate_experiment, args.candidate_observation)
     report = _render_report(baseline, candidate)

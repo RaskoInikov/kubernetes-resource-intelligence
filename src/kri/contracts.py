@@ -1903,8 +1903,8 @@ class QualityMetricComparison(ContractModel):
 class LLMQualityEvaluationReport(ContractModel):
     """Reproducible M13 paired quality report."""
 
-    schema_version: Literal["1.0"] = SCHEMA_VERSION
-    evaluator_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.1"
+    evaluator_version: Literal["1.0", "1.1"] = "1.1"
     evaluation_id: str
     created_at: datetime
     evidence_class: Literal["offline-recorded", "fresh-real"]
@@ -2231,4 +2231,350 @@ class RetrievalEvaluationReport(ContractModel):
         )
         if self.passed != expected_pass:
             raise ValueError("evaluation pass status does not match its metrics")
+        return self
+
+
+class EffectivenessRole(StrEnum):
+    """Controlled experiment side for one M14 trial."""
+
+    BASELINE = "baseline"
+    CANDIDATE = "candidate"
+
+
+class EffectivenessClassification(StrEnum):
+    """Policy 1.0 outcome for a tested recommendation."""
+
+    EFFECTIVE = "effective"
+    INEFFECTIVE = "ineffective"
+    HARMFUL = "harmful"
+    INCONCLUSIVE = "inconclusive"
+
+
+class EffectivenessMetric(StrEnum):
+    """Measurements available to M14 objectives and guardrails."""
+
+    THROUGHPUT_RPS = "throughput_rps"
+    P95_LATENCY_SECONDS = "p95_latency_seconds"
+    THROTTLE_RATIO = "throttle_ratio"
+    CPU_AVERAGE_CORES = "cpu_average_cores"
+    MEMORY_P95_BYTES = "memory_p95_bytes"
+    ERROR_RATIO = "error_ratio"
+    READY_RATIO = "ready_ratio"
+    RESTARTS = "restarts"
+    TARGET_ATTAINMENT = "target_attainment"
+    THROUGHPUT_PER_CPU_CORE = "throughput_per_cpu_core"
+
+
+class EffectDirection(StrEnum):
+    """Whether larger or smaller metric values are desirable."""
+
+    HIGHER = "higher"
+    LOWER = "lower"
+
+
+class VerificationStatus(StrEnum):
+    """Separate rollback or cleanup verification state."""
+
+    NOT_VERIFIED = "not_verified"
+    VERIFIED = "verified"
+    FAILED = "failed"
+
+
+class ResourceMutation(ContractModel):
+    """One exact proposed resource-field change; this is data, not execution."""
+
+    field: Literal["cpu_request", "cpu_limit", "memory_request", "memory_limit"]
+    baseline_value: str = Field(min_length=1)
+    candidate_value: str = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def mutation_changes_value(self) -> "ResourceMutation":
+        if self.baseline_value == self.candidate_value:
+            raise ValueError("resource mutation must change its value")
+        return self
+
+
+class EffectivenessObjective(ContractModel):
+    """Explicit required performance or efficiency objective."""
+
+    objective_id: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    metric: EffectivenessMetric
+    direction: EffectDirection
+    minimum_relative_improvement: float = Field(ge=0, allow_inf_nan=False)
+    target_value: float | None = Field(default=None, allow_inf_nan=False)
+    required: Literal[True] = True
+
+
+class EffectivenessGuardrail(ContractModel):
+    """Maximum tolerated regression for one safety or stability metric."""
+
+    guardrail_id: str = Field(pattern=r"^[a-z][a-z0-9-]*$")
+    metric: EffectivenessMetric
+    direction: EffectDirection
+    maximum_relative_regression: float = Field(ge=0, allow_inf_nan=False)
+    absolute_limit: float | None = Field(default=None, allow_inf_nan=False)
+
+
+class EffectivenessPlan(ContractModel):
+    """Read-only, digestable M14 recommendation experiment preflight."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    plan_version: Literal["1.0"] = "1.0"
+    policy_version: Literal["1.0"] = "1.0"
+    plan_id: str = Field(pattern=r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+    created_at: datetime
+    created_by: str = Field(min_length=1)
+    source_analysis_id: str = Field(min_length=1)
+    source_analysis_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_observation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    source_recommendation_id: str = Field(min_length=1)
+    source_evidence_ids: tuple[str, ...] = Field(min_length=1)
+    source_requires_approval: Literal[True] = True
+    context: str = Field(min_length=1)
+    cluster: str = Field(min_length=1)
+    namespace: str = Field(min_length=1)
+    workload: str = Field(min_length=1)
+    image_identity: str = Field(min_length=1)
+    baseline_configuration: WorkloadConfiguration
+    candidate_configuration: WorkloadConfiguration
+    mutation: ResourceMutation
+    load_configuration: LoadConfiguration
+    repetitions: int = Field(ge=2, le=20)
+    observation_window_seconds: int = Field(ge=1, le=3600)
+    stop_conditions: tuple[str, ...] = Field(min_length=1)
+    rollback_procedure: str = Field(min_length=1)
+    cleanup_procedure: str = Field(min_length=1)
+    experiment_artifact_root: str = Field(min_length=1)
+    observation_artifact_root: str = Field(min_length=1)
+    objectives: tuple[EffectivenessObjective, ...] = Field(min_length=1)
+    guardrails: tuple[EffectivenessGuardrail, ...] = Field(min_length=1)
+
+    @field_validator("created_at")
+    @classmethod
+    def effectiveness_plan_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("effectiveness plan timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def recommendation_is_the_only_change(self) -> "EffectivenessPlan":
+        fields = ("cpu_request", "cpu_limit", "memory_request", "memory_limit")
+        differences = [
+            field
+            for field in fields
+            if getattr(self.baseline_configuration, field)
+            != getattr(self.candidate_configuration, field)
+        ]
+        if differences != [self.mutation.field]:
+            raise ValueError("candidate must contain only the declared resource change")
+        if (
+            getattr(self.baseline_configuration, self.mutation.field)
+            != self.mutation.baseline_value
+            or getattr(self.candidate_configuration, self.mutation.field)
+            != self.mutation.candidate_value
+        ):
+            raise ValueError("mutation values must match baseline and candidate")
+        if (
+            self.baseline_configuration.replicas
+            != self.candidate_configuration.replicas
+        ):
+            raise ValueError("candidate cannot change replica count")
+        ids = [item.objective_id for item in self.objectives]
+        if len(ids) != len(set(ids)):
+            raise ValueError("objective IDs must be unique")
+        required_metrics = {item.metric for item in self.objectives if item.required}
+        performance_metrics = {
+            EffectivenessMetric.THROUGHPUT_RPS,
+            EffectivenessMetric.P95_LATENCY_SECONDS,
+            EffectivenessMetric.THROTTLE_RATIO,
+            EffectivenessMetric.ERROR_RATIO,
+            EffectivenessMetric.TARGET_ATTAINMENT,
+        }
+        efficiency_metrics = {
+            EffectivenessMetric.CPU_AVERAGE_CORES,
+            EffectivenessMetric.MEMORY_P95_BYTES,
+            EffectivenessMetric.THROUGHPUT_PER_CPU_CORE,
+        }
+        if not required_metrics.intersection(performance_metrics):
+            raise ValueError("plan requires a performance objective")
+        if not required_metrics.intersection(efficiency_metrics):
+            raise ValueError("plan requires an efficiency objective")
+        guardrail_ids = [item.guardrail_id for item in self.guardrails]
+        if len(guardrail_ids) != len(set(guardrail_ids)):
+            raise ValueError("guardrail IDs must be unique")
+        return self
+
+
+class EffectivenessApproval(ContractModel):
+    """Separate human authorization evidence for a bounded M14 plan."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    plan_id: str
+    plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    approved: bool
+    decided_at: datetime
+    decided_by: str = Field(min_length=1)
+    scope: str = Field(min_length=1)
+
+    @field_validator("decided_at")
+    @classmethod
+    def approval_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("approval timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+
+class EffectivenessPlanEnvelope(ContractModel):
+    """Integrity envelope for one immutable M14 preflight plan."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    plan: EffectivenessPlan
+
+    @model_validator(mode="after")
+    def plan_digest_matches(self) -> "EffectivenessPlanEnvelope":
+        encoded = json.dumps(
+            self.plan.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        if hashlib.sha256(encoded).hexdigest() != self.plan_sha256:
+            raise ValueError("effectiveness plan digest does not match")
+        return self
+
+
+class EffectivenessTrialReference(ContractModel):
+    """Digest-bound source artifacts for one repeated trial."""
+
+    trial_id: str = Field(pattern=r"^[a-z0-9](?:[-a-z0-9]{0,61}[a-z0-9])?$")
+    role: EffectivenessRole
+    repetition: int = Field(ge=1)
+    experiment_id: str
+    experiment_path: str = Field(min_length=1)
+    experiment_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    observation_id: str
+    observation_path: str = Field(min_length=1)
+    observation_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    declared_confounders: tuple[str, ...] = ()
+
+
+class EffectivenessTrialManifest(ContractModel):
+    """Fixed digest-bound trial set supplied to the read-only M14 evaluator."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    plan_id: str
+    plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    trials: tuple[EffectivenessTrialReference, ...] = Field(min_length=1)
+
+
+class EffectivenessMeasurement(ContractModel):
+    """One trial's source-preserving measurements; missing never means zero."""
+
+    trial_id: str
+    role: EffectivenessRole
+    repetition: int = Field(ge=1)
+    experiment_id: str
+    observation_id: str
+    interval_start: datetime
+    interval_end: datetime
+    throughput_rps: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    p95_latency_seconds: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    throttle_ratio: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    cpu_average_cores: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    memory_p95_bytes: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    application_error_ratio: float | None = Field(
+        default=None, ge=0, le=1, allow_inf_nan=False
+    )
+    client_failure_ratio: float | None = Field(
+        default=None, ge=0, le=1, allow_inf_nan=False
+    )
+    client_request_failures: int | None = Field(default=None, ge=0)
+    client_request_timeouts: int | None = Field(default=None, ge=0)
+    error_ratio: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    ready_ratio: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
+    restarts: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    target_attainment: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    throughput_per_cpu_core: float | None = Field(
+        default=None, ge=0, allow_inf_nan=False
+    )
+    evidence_ids: tuple[str, ...]
+    limitations: tuple[str, ...]
+
+
+class EffectivenessMetricResult(ContractModel):
+    """Repeated-trial aggregate effect with explicit availability."""
+
+    metric: EffectivenessMetric
+    baseline_values: tuple[float, ...]
+    candidate_values: tuple[float, ...]
+    baseline_mean: float | None = Field(default=None, allow_inf_nan=False)
+    candidate_mean: float | None = Field(default=None, allow_inf_nan=False)
+    baseline_stdev: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    candidate_stdev: float | None = Field(default=None, ge=0, allow_inf_nan=False)
+    absolute_difference: float | None = Field(default=None, allow_inf_nan=False)
+    relative_difference: float | None = Field(default=None, allow_inf_nan=False)
+    objective_passed: bool | None = None
+    guardrail_passed: bool | None = None
+
+
+class EffectivenessIssue(ContractModel):
+    """Integrity, comparability, or measurement limitation."""
+
+    code: str = Field(pattern=r"^[a-z][a-z0-9_]*$")
+    trial_id: str | None = None
+    message: str = Field(min_length=1)
+    blocking: bool
+
+
+class RecommendationEffectivenessReport(ContractModel):
+    """Digest-bound M14 outcome without any Kubernetes mutation capability."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    evaluator_version: Literal["1.0"] = "1.0"
+    policy_version: Literal["1.0"] = "1.0"
+    report_id: str
+    created_at: datetime
+    plan_id: str
+    plan_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    classification: EffectivenessClassification
+    measurements: tuple[EffectivenessMeasurement, ...]
+    metric_results: tuple[EffectivenessMetricResult, ...]
+    issues: tuple[EffectivenessIssue, ...]
+    confounders: tuple[str, ...]
+    rollback_status: VerificationStatus
+    cleanup_status: VerificationStatus
+    automatic_kubernetes_changes: Literal[False] = False
+
+    @field_validator("created_at")
+    @classmethod
+    def effectiveness_report_timestamp_is_utc(cls, value: datetime) -> datetime:
+        if value.tzinfo is None:
+            raise ValueError("effectiveness report timestamp must include a timezone")
+        return value.astimezone(UTC)
+
+    @model_validator(mode="after")
+    def inconclusive_when_blocked(self) -> "RecommendationEffectivenessReport":
+        if any(item.blocking for item in self.issues) and (
+            self.classification is not EffectivenessClassification.INCONCLUSIVE
+        ):
+            raise ValueError("blocking issues require an inconclusive classification")
+        return self
+
+
+class RecommendationEffectivenessReportEnvelope(ContractModel):
+    """Integrity envelope for one immutable M14 outcome report."""
+
+    schema_version: Literal["1.0"] = SCHEMA_VERSION
+    report_sha256: str = Field(pattern=r"^[0-9a-f]{64}$")
+    report: RecommendationEffectivenessReport
+
+    @model_validator(mode="after")
+    def report_digest_matches(self) -> "RecommendationEffectivenessReportEnvelope":
+        encoded = json.dumps(
+            self.report.model_dump(mode="json"),
+            sort_keys=True,
+            separators=(",", ":"),
+        ).encode()
+        if hashlib.sha256(encoded).hexdigest() != self.report_sha256:
+            raise ValueError("effectiveness report digest does not match")
         return self
