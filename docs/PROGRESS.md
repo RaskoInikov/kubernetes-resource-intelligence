@@ -2,7 +2,7 @@
 
 ## Current milestone
 M14 — Evidence-based recommendation effectiveness (offline implementation
-complete; approved repeated real-cluster acceptance pending)
+complete; V4 real-cluster evaluation inconclusive and valid acceptance pending)
 
 ## Completed
 - M14 adds schema-1.0 digest envelopes for a preflight plan and outcome report,
@@ -910,13 +910,21 @@ complete; approved repeated real-cluster acceptance pending)
   coverage, ten Vitest tests, strict TypeScript, and a Vite production build.
   Verification used synthetic and retained artifacts only and performed no
   Kubernetes or external-service operation.
+- GitHub-presentation verification passed on 2026-11-10 with Ruff lint and
+  formatting, strict mypy over 50 source files, 359 offline Python tests at 100%
+  statement and branch coverage, ten Vitest tests, strict TypeScript, and a Vite
+  production build. README local links, `git diff --check`, tracked-file secret
+  patterns, and retained M14 plan/approval/manifest schemas were checked without
+  contacting or mutating Kubernetes or external services.
 
 ## Next
-Obtain explicit approval for one bounded, disposable M14 plan, run at least two
-baseline and two candidate trials with terminal lifecycle and complete metrics,
-verify rollback/cleanup separately, and retain the real digest-bound report.
-M15 must not begin until that real M14 acceptance evidence exists. M14–M17 must
-complete before M18 begins.
+Revise the M14 procedure so readiness and warning-event stop gates are checked
+before every candidate trial, then obtain explicit approval before any new
+cluster mutation. A future run must retain at least two valid baseline and two
+valid candidate trials, terminal lifecycle and complete metrics, and separate
+rollback/cleanup verification. The current V4 evidence remains inconclusive and
+must not be reused as successful acceptance. M15 must not begin until valid M14
+acceptance evidence exists; M14–M17 must complete before M18 begins.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
@@ -925,11 +933,12 @@ complete before M18 begins.
 - M15–M18 are planned but not implemented. M10 and M11 are loopback-only
   development tools and do not provide production authentication,
   authorization, TLS, or deployment packaging.
-- M14 real-cluster acceptance is pending explicit approval. The retained 2026-11-02
-  A/B pair is not eligible: its records are nonterminal, its dedicated error
-  metric is missing, it changes three resources together, and it has no repeated
-  trials or verified image identity. It therefore remains descriptive evidence,
-  not a favorable effectiveness result.
+- M14 real-cluster acceptance remains incomplete. V4 observed 40.59% higher
+  throughput and 23.50% lower p95 latency, but failed the throttling and CPU
+  efficiency objectives. Candidate trials also continued after readiness-warning
+  stop conditions, so the authoritative classification is `inconclusive`, not a
+  verified optimization success. Earlier attempts remain retained as superseded
+  or incomplete evidence.
 - M11 has offline component coverage and a production build, but has not yet
   been exercised in a browser against live Kubernetes, Prometheus, and Qdrant
   services.

@@ -8,9 +8,23 @@ htmlcov/
 .mypy_cache/
 .ruff_cache/
 .env
+.env.*
+!.env.example
+
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
 
 node_modules/
 dist/
+coverage/
+
+*.tmp
+*.temp
 
 results/*
 !results/.gitkeep

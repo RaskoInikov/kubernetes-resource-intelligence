@@ -1,597 +1,145 @@
 # Kubernetes Resource Intelligence
 
-Kubernetes Resource Intelligence is an evidence-grounded resource analysis
-project. M1 provides a disposable application and independently controlled load;
-M2 adds Prometheus monitoring for container resources and HTTP behavior; M3
-adds identity-bound, read-only Kubernetes and Prometheus collectors; M4 creates
-replayable observations; M5 produces deterministic, evidence-linked resource
-analysis and bounded recommendations; M6 adds canonical verified knowledge; and
-M7 builds a derived Qdrant index with read-only knowledge inspection and
-retrieval. M8 retrieves and evaluates analysis-grounded operational evidence;
-M9 builds an integrity-checked, inspectable LLM handoff without invoking a
-model; M10 exposes the complete pipeline through FastAPI; M11 adds a small
-React and TypeScript testing console; M12 adds local Qwen3 inference with
-independent output validation; and M13 adds fixed-dataset paired RAG quality
-evaluation. The planned M14–M17 backend sequence adds
-recommendation-effectiveness experiments, artifact
-lineage, complete API orchestration, and real-service backend acceptance. Only
-after that gate does M18 deliver the final production-oriented React interface.
+Kubernetes Resource Intelligence (KRI) is an evidence-first toolkit for
+investigating workload resource pressure and evaluating resource recommendations.
+It preserves raw Kubernetes and Prometheus observations, performs deterministic
+analysis, retrieves relevant operational knowledge, and uses a local LLM only to
+explain already-derived findings.
 
-## Requirements
+The project is designed around a strict trust boundary: generated prose cannot
+invent measurements, change a recommendation, or mutate a cluster. Kubernetes
+changes remain explicit operator actions, and controlled experiments require a
+reviewed plan and separate approval.
 
-- Python 3.12 or newer
-- A virtual environment tool (`venv` is sufficient)
-- Node.js 20 or newer and npm
+## Architecture
 
-No Kubernetes cluster or external service is needed for offline verification.
+```mermaid
+flowchart LR
+    K8s[Kubernetes API] --> Collect[Read-only collectors]
+    Prom[Prometheus] --> Collect
+    Collect --> Obs[Immutable observations]
+    Obs --> Analyze[Deterministic analyzer]
+    Analyze --> Findings[Findings and recommendations]
 
-## Development setup
+    Docs[Canonical Markdown knowledge] --> Index[Derived Qdrant index]
+    Index --> RAG[Evidence retrieval]
+    Findings --> RAG
+    RAG --> Input[Validated LLM input]
+    Input --> LLM[Local Qwen3 via Ollama]
+    LLM --> Validate[Independent output validator]
+
+    Findings --> Eval[Controlled recommendation evaluation]
+    Eval --> Report[Digest-bound effectiveness report]
+
+    API[FastAPI] --> Collect
+    API --> Analyze
+    API --> RAG
+    API --> Input
+    UI[React client] --> API
+```
+
+The implemented pipeline keeps five concerns separate:
+
+- deterministic Python computes statistics, conditions, and bounded resource
+  recommendations from replay-validated observations;
+- RAG retrieves traceable Kubernetes references, runbooks, and incident evidence
+  from a rebuildable Qdrant index;
+- local Qwen3 inference explains a validated, digest-bound input package;
+- an independent validator rejects unsupported numbers, citations,
+  recommendations, or missing uncertainty instead of repairing output; and
+- a read-only evaluator compares approved baseline/candidate experiments without
+  applying recommendations itself.
+
+## Capabilities and safety decisions
+
+- Collects workload identity, configuration, readiness, restarts, events, CPU,
+  throttling, memory, throughput, errors, and latency without replacing missing
+  observations with zero.
+- Stores immutable, versioned JSON artifacts with source timestamps, provenance,
+  and canonical digests.
+- Produces increase-only CPU or memory recommendations that are rounded, capped,
+  evidence-linked, and marked as requiring approval.
+- Keeps canonical knowledge in reviewed Markdown; embeddings and Qdrant state are
+  derived and reproducible.
+- Supports explicit RAG-on/RAG-off local inference and deterministic evaluation of
+  output quality.
+- Evaluates recommendation effectiveness using repeated trials, declared
+  objectives, regression guardrails, confounders, and separate rollback/cleanup
+  status.
+- Restricts normal Kubernetes collection to read-only operations. No LLM output
+  is applied to a cluster.
+
+## Technology
+
+- Python 3.12, Pydantic, FastAPI, pytest, Ruff, and mypy
+- Kubernetes and `kubectl`
+- Prometheus and cAdvisor metrics
+- Qdrant with FastEmbed and `sentence-transformers/all-MiniLM-L6-v2`
+- Ollama with a digest-pinned local Qwen3 model
+- React, TypeScript, Vite, and Vitest
+- Versioned JSON and Markdown artifacts
+
+## Local setup
+
+Offline development does not require Kubernetes, Prometheus, Qdrant, Ollama, or
+model downloads. External boundaries are replaced with fakes in the test suite.
+
+Requirements: Python 3.12+, Node.js 20+, npm, and `make`.
 
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
 python -m pip install -e ".[dev]"
-cp .env.example .env
 npm --prefix web ci
-```
-
-`.env` is for local values and is not committed. Settings use the `KRI_`
-prefix and fail validation when a required value is absent or malformed.
-
-## Verification
-
-Run the complete local verification suite:
-
-```bash
 make verify
 ```
 
-The individual commands are:
-
-```bash
-python -m ruff check .
-python -m ruff format --check .
-python -m mypy
-python -m pytest --cov=kri --cov-report=term-missing
-npm --prefix web run typecheck
-npm --prefix web test
-npm --prefix web run build
-```
-
-These checks are offline. Future real-service checks must be reported
-separately, as required by `AGENTS.md`.
-
-## Repository layout
-
-- `src/kri/` — Python contracts, collectors, observations, analysis, and workload
-  controller.
-- `tests/` — offline Python tests.
-- `deploy/workload/` — build context for the disposable target/load image.
-- `deploy/monitoring/` — disposable Prometheus resources and canonical PromQL.
-- `knowledge/` — canonical Markdown knowledge and its versioned integrity
-  manifest.
-- `results/` — generated experiment artifacts (ignored except `.gitkeep`).
-- `web/` — disposable React and TypeScript pipeline testing interface.
-- `docs/` — product, architecture, contracts, roadmap, and progress.
-
-See `docs/ROADMAP.md` for milestone scope and its mandatory M12–M17 backend gate
-before M18. Implement only the explicitly requested milestone.
-
-## M1 workload operations
-
-All commands target `KRI_K8S_CONTEXT` and the pre-existing
-`KRI_K8S_NAMESPACE`. The controller never creates a namespace. Build the test
-image and make it available to the target cluster using the mechanism for that
-cluster. For the example kind context:
-
-```bash
-make workload-image IMAGE=kri-workload:local
-kind load docker-image kri-workload:local --name kube-optimizer
-```
-
-Building or loading an image changes local Docker or cluster-node state. Run
-those commands only as an explicitly approved experiment operation.
-
-Application deployment is separate from load generation:
-
-```bash
-kri-workload deploy \
-  --cpu-request 100m --cpu-limit 500m \
-  --memory-request 64Mi --memory-limit 256Mi \
-  --replicas 2
-
-kri-workload start-load \
-  --cpu-request 100m --cpu-limit 500m \
-  --memory-request 64Mi --memory-limit 256Mi \
-  --replicas 2 \
-  --mode mixed --concurrency 4 --request-rate 10 \
-  --duration-seconds 60 --experiment-id exp-example-1
-
-kri-workload status exp-example-1
-kri-workload stop-load exp-example-1
-kri-workload delete
-```
-
-`stop-load` deletes only `job/kri-load-<experiment-id>`. It does not modify the
-Deployment or Service. `delete` is the distinct application-removal operation.
-Experiment records are written atomically beneath `results/experiments/` and
-are ignored by Git. `status` reconciles a running record with the Kubernetes
-Job UID, actual Job start time, terminal condition time, reason, message, and
-final state. `stop-load` performs that reconciliation before deletion, so a Job
-that already completed or failed is not relabeled as stopped. Finished Jobs are
-retained until explicit stop/cleanup so their final status remains available.
-
-The request rate is a target, not an unbounded queue. If all configured workers
-are occupied, scheduled arrivals are skipped. New requests stop at the duration
-deadline and in-flight request timeouts cannot extend beyond the remaining
-experiment time.
-
-These commands perform persistent Kubernetes mutations and therefore require
-explicit approval before execution. M1's default `make verify` is fully offline
-and uses fake command responses. Optional real-cluster verification must record
-the context, namespace, image, commands, and observed results separately; mock
-or dry-run results must not be reported as real integration success.
-
-## M2 Prometheus monitoring
-
-The application exposes `/metrics` with request totals, error totals, and a
-request-duration histogram. Its Pod template carries explicit Prometheus scrape
-annotations. The monitoring manifest installs a separate, project-owned
-Prometheus in `kri-monitoring` and grants read-only access to:
-
-- annotated `kri-workload` Pods in `payments`;
-- node discovery and kubelet cAdvisor through the API-server proxy.
-
-The checked-in manifest targets the configured example namespace `payments`.
-If `KRI_K8S_NAMESPACE` changes, update both namespaced RBAC resources and the
-pod-discovery namespace before applying it.
-
-The following commands are persistent Kubernetes mutations and require explicit
-approval. They are shown as an operator procedure, not run by `make verify`:
-
-```bash
-make workload-image IMAGE=kri-workload:local
-kind load docker-image kri-workload:local --name kube-optimizer
-kubectl --context kind-kube-optimizer apply -f deploy/monitoring/prometheus.yaml
-```
-
-Deploy the M1 application and load as described above, then access Prometheus:
-
-```bash
-kubectl --context kind-kube-optimizer \
-  --namespace kri-monitoring port-forward service/kri-prometheus 9090:9090
-```
-
-Canonical queries for CPU usage, throttling, memory working set, throughput,
-errors, and latency p95 are in `deploy/monitoring/queries.md`. An empty result is
-missing data and must not be treated as zero.
-
-Cleanup removes only project-owned monitoring resources:
-
-```bash
-kubectl --context kind-kube-optimizer delete -f deploy/monitoring/prometheus.yaml
-```
-
-The monitoring Namespace uses ephemeral storage and the Prometheus image remains
-cached on kind nodes after cleanup.
-
-## M3 read-only collection
-
-`KubernetesCollector` captures the fixed disposable Deployment, matching Pods,
-configured resources, readiness/restarts, and related events. `KubectlReader`
-issues only `get` commands and always supplies `KRI_K8S_CONTEXT` and
-`KRI_K8S_NAMESPACE`. The resulting Deployment UID is the workload identity used
-for the matching `PrometheusCollector` snapshot.
-
-The Prometheus collector performs only `/api/v1/query_range` requests. Callers
-provide a timezone-aware start/end interval and a Kubernetes snapshot so every
-query is restricted to its namespace, workload job, application container, and
-Pod names. Returned data remains raw: source labels, units, timestamps, and
-values are preserved. Empty expected metric families produce `missing_data`
-entries; they never produce zero-valued samples.
-
-Collection is available as a Python API in `kri.collectors`. It does not deploy,
-modify, normalize, aggregate, or persist observations; normalization and
-storage belong to M4. Offline tests use fake source responses. Any claim of
-real-service collection must be verified and reported separately.
-
-The opt-in real-service verifier is `scripts/verify_m3_collectors.py`. It writes
-the complete versioned Kubernetes and raw Prometheus snapshots beneath
-`results/m3-verification/`; those generated artifacts are intentionally ignored.
-
-## M4 observations
-
-`ObservationBuilder` combines identity-matched M3 snapshots into a versioned
-`ObservationSnapshot`. The artifact embeds both raw inputs, adds a separate
-canonical normalized view, records structured quality issues, and hashes the
-raw provenance. Normalization preserves source timestamps and values; it does
-not calculate rates or other M5 statistics.
-
-`ObservationStore` saves immutable JSON artifacts atomically beneath a caller-
-selected directory, returns bounded summaries from `inspect`, and uses `replay`
-to rebuild normalized data and quality from embedded raw inputs. Loading rejects
-malformed artifacts or raw-source digest mismatches; replay also rejects changes
-to normalized series, quality, or provenance.
-
-```python
-from pathlib import Path
-from kri.observations import ObservationBuilder, ObservationStore
-
-snapshot = ObservationBuilder().build(workload_snapshot, raw_metrics_snapshot)
-store = ObservationStore(Path("results/observations"))
-store.save(snapshot)
-summary = store.inspect(snapshot.observation_id)
-replayed = store.replay(snapshot.observation_id)
-```
-
-## M5 deterministic analysis
-
-`DeterministicAnalyzer` accepts an M4 snapshot only after replay validation. It
-calculates per-Pod/container CPU, throttling, and memory statistics plus
-workload-level HTTP context, applies policy version `1.1`, and returns a
-versioned `AnalysisReport`. Every finding and recommendation links back to exact
-normalized-series and workload-configuration evidence.
-
-```python
-from pathlib import Path
-from kri.analysis import DeterministicAnalyzer
-from kri.observations import ObservationStore
-
-store = ObservationStore(Path("results/observations"))
-report = DeterministicAnalyzer().analyze_saved(store, "obs-example")
-```
-
-Counter resets and missing inputs suppress dependent results; they are never
-repaired or replaced with zero. Repeated counter evaluations are coalesced for
-CPU peak rates when the query step is finer than scrape cadence. Recommendations
-only increase resources, round to Kubernetes units, remain at or below
-configured limits where applicable, never exceed twice the current value, and
-always require explicit approval. Reports retain finite-window, scrape-cadence,
-near-threshold, and constrained-headroom uncertainty. M5 is read-only and
-performs no Kubernetes mutation.
-
-## M6 canonical knowledge
-
-`knowledge/manifest.json` registers the canonical Markdown corpus under
-`knowledge/documents/`. It contains two Kubernetes references, two diagnostic
-runbooks, and two historical project incidents. Every entry has a semantic
-version, verification state, verifier and UTC timestamp, tags, explicit source
-provenance, repository-relative path, and SHA-256 content digest.
-
-`KnowledgeRepository` is a local read-only API. It validates the whole manifest,
-safe path containment, exact checksums, matching top-level titles, complete type
-coverage, and absence of unregistered Markdown before returning documents.
-
-```python
-from pathlib import Path
-from kri.knowledge import KnowledgeRepository
-
-repository = KnowledgeRepository(Path("knowledge"))
-summaries = repository.inspect()
-runbook = repository.get("runbook-cpu-throttling")
-```
-
-M6 does not contact Kubernetes, Prometheus, Qdrant, or the network. Qdrant
-indexing, chunking, and retrieval are M7 concerns; generated vector state will
-not replace the manifest and Markdown as canonical knowledge.
-
-## M7 Qdrant knowledge index
-
-`KnowledgeIndexer` validates the complete M6 repository, creates or validates
-one configured cosine-vector collection, and synchronizes deterministic chunks.
-It upserts current points and deletes only stale points carrying the project
-ownership marker. Calling `sync()` mutates the configured Qdrant collection;
-it never modifies canonical Markdown or manifest metadata.
-
-```python
-from pathlib import Path
-
-from kri.config import load_settings
-from kri.knowledge import KnowledgeRepository
-from kri.knowledge_index import (
-    KnowledgeIndexer,
-    KnowledgeInspectionAPI,
-    QdrantHttpGateway,
-)
-
-settings = load_settings()
-repository = KnowledgeRepository(Path("knowledge"))
-gateway = QdrantHttpGateway(str(settings.qdrant_url))
-
-# Explicit derived-state mutation; run only when an index sync is intended.
-summary = KnowledgeIndexer(
-    repository, gateway, settings.qdrant_collection
-).sync()
-
-# These operations are read-only against both the repository and Qdrant.
-api = KnowledgeInspectionAPI(repository, gateway, settings.qdrant_collection)
-documents = api.documents()
-status = api.index_status()
-chunks = api.chunks(document_id="runbook-cpu-throttling", limit=20)
-chunk = api.chunk(chunks[0].chunk_id)
-results = api.retrieve("CPU throttling diagnosis", limit=5)
-```
-
-Production uses the small Apache-2.0
-`sentence-transformers/all-MiniLM-L6-v2` pretrained semantic model through
-FastEmbed. Model weights are downloaded into the local model cache on first use;
-subsequent inference is local. Retrieval is bounded to 20 results, filters to
-the current repository version and
-`verified` documents, and returns exact chunk text, digests, metadata, scores,
-and source provenance. M7 has no HTTP server; FastAPI integration remains M10.
-Offline verification uses a fake Qdrant gateway and does not contact or mutate
-an external Qdrant service.
-
-The opt-in verifier performs real model inference and mutates only its named
-Qdrant collection. Run it only against an explicitly isolated instance:
-
-```bash
-python scripts/verify_m7_qdrant.py \
-  --url http://127.0.0.1:16333 \
-  --collection kri_m7_verify_20261101
-```
-
-## M8 analysis-grounded operational evidence
-
-`AnalysisEvidenceRetriever` consumes a validated M5 report without changing its
-statistics or recommendations. It queries once per recommendation, groups any
-remaining replica-level conditions by type, and returns exact verified chunks
-with links to the originating condition, statistic, and measurement-evidence
-IDs. Retrieval classifies reference, runbook, and incident intent, then applies
-a fixed 85% semantic/15% exact-term rerank over 20 scoped candidates. Both score
-components are retained.
-
-```python
-from kri.rag import (
-    AnalysisEvidenceRetriever,
-    RetrievalEvaluator,
-    load_evaluation_dataset,
-)
-
-evidence = AnalysisEvidenceRetriever(api).retrieve(analysis_report)
-dataset = load_evaluation_dataset(Path("evaluation/m8-retrieval-v1.json"))
-evaluation = RetrievalEvaluator(api).evaluate(dataset)
-```
-
-The fixed dataset has six independently reviewed graded cases spanning CPU,
-memory, missing metrics, and historical incidents. Evaluation records its
-canonical digest, exact ranked hits, Recall@5, MRR@5, nDCG@5, thresholds, and an
-explicit pass/fail result. Offline tests use deterministic doubles. The opt-in
-real verifier mutates only its named isolated Qdrant collection:
-
-```bash
-python scripts/verify_m8_retrieval.py \
-  --url http://127.0.0.1:16334 \
-  --collection kri_m8_verify_20261101 \
-  --analysis results/analysis/analysis-m3-verify-20261031.json
-```
-
-## M9 validated LLM input
-
-`LLMInputBuilder` accepts a matching M5 `AnalysisReport` and M8
-`OperationalEvidencePackage`. It preserves exact findings, numbers, units, and
-uncertainties; selects the minimal referenced statistic/evidence closure; and
-retains bounded knowledge excerpts with query, score, chunk, digest, and source
-traceability. It does not generate prose or call an LLM.
-
-```python
-from pathlib import Path
-
-from kri.llm_input import LLMInputBuilder, LLMInputStore
-
-package = LLMInputBuilder().build(analysis_report, evidence)
-store = LLMInputStore(Path("results/llm-inputs"))
-path = store.save(package)
-summary = store.inspect(package.package_id)
-loaded = store.load(package.package_id)
-```
-
-Artifacts are immutable JSON digest envelopes. Loading detects any alteration
-to a number, reference, uncertainty, or excerpt. M9 includes at most three hits
-per query, twelve deduplicated excerpts, and 600 characters per excerpt; exact
-retrieved/included counts expose bounded omissions. FastAPI and LLM inference
-remain outside M9.
-
-The opt-in real verifier replays a retained observation, recalculates M5,
-synchronizes and evaluates M8 against an explicitly isolated Qdrant collection,
-then saves, reloads, and inspects M9:
-
-```bash
-python scripts/verify_m9_pipeline.py \
-  --url http://127.0.0.1:16335 \
-  --collection kri_m9_pipeline_20261101 \
-  --observation-directory results/observations \
-  --observation-id obs-m3-verify-20261031 \
-  --analysis-id analysis-m9-pipeline-20261101 \
-  --package-id llm-input-m9-pipeline-20261101 \
-  --output-directory results/m9-verification
-```
-
-The command mutates only the named Qdrant collection and generated output
-directory. Run it only against an approved isolated Qdrant instance.
-
-## M10 FastAPI
-
-M10 exposes the existing M1-M9 components beneath `/api/v1`. Start the
-loopback-only development server after configuring `.env`:
-
-```bash
-kri-api
-```
-
-Interactive OpenAPI is available at `http://127.0.0.1:8000/docs`. The principal
-routes are:
-
-- `PUT` / `DELETE /api/v1/workload` — explicitly deploy or delete only the M1
-  application.
-- `POST /api/v1/load-experiments`, `POST .../{id}/stop`, and `GET .../{id}` —
-  independently control and inspect load Jobs.
-- `GET /api/v1/workload` and `POST /api/v1/metrics/query` — collect current
-  Kubernetes state and raw timestamped Prometheus series.
-- `POST /api/v1/observations`, `GET .../{id}`, and `GET .../{id}/summary` —
-  create and inspect immutable M4 snapshots.
-- `POST /api/v1/analyses` — run M5 from a stored observation.
-- `POST /api/v1/rag/evidence` — run M8 from the exact supplied M5 report.
-- `POST /api/v1/llm-inputs`, `GET .../{id}`, and `GET .../{id}/summary` — build,
-  persist, and inspect M9 packages.
-
-The API never synchronizes Qdrant implicitly; the configured collection must
-already contain the M7 index. M5 and M8 results are returned directly rather
-than hidden in a server cache, so callers pass the exact versioned contracts to
-the next stage. Only the explicit workload routes mutate Kubernetes. No route
-invokes an LLM, applies recommendations, creates namespaces, or substitutes
-missing metric values.
-
-After explicitly synchronizing an isolated Qdrant collection and starting the
-API against it, the retained-observation HTTP workflow can be verified with:
-
-```bash
-python scripts/verify_m10_api.py \
-  --url http://127.0.0.1:8000 \
-  --observation-id obs-m3-verify-20261031 \
-  --analysis-id analysis-m10-api-20261101 \
-  --package-id llm-input-m10-api-20261101 \
-  --output-directory results/m10-verification
-```
-
-The verifier checks health and OpenAPI, loads and inspects the immutable M4
-observation, invokes M5 and M8, creates and reloads M9 through HTTP, verifies
-identity and source-digest continuity, requires verified retrieval hits, and
-writes the exact returned contracts plus a bounded summary. Package IDs are
-immutable, so use a new ID or remove only a disposable prior verification
-artifact before repeating the command.
-
-## M11 testing interface
-
-`kri-api` always resolves configuration from the repository-root `.env`, even
-when it is launched from another working directory. Environment variables still
-take precedence. For a complete local pipeline, use this order:
-
-1. Copy `.env.example` to `.env` and adjust the context, namespace, image, and
-   collection if needed. The defaults expect Prometheus on port 9090 and Qdrant
-   HTTP on port 6333.
-
-   Existing `.env` files created from an older example may still use port 6334,
-   which is Qdrant's gRPC port. Change `KRI_QDRANT_URL` to
-   `http://localhost:6333` for the HTTP gateway used by this project.
-2. In terminal 1, expose the already deployed project Prometheus from the kind
-   cluster:
-
-```bash
-kubectl --context kind-kube-optimizer --namespace kri-monitoring \
-  port-forward service/kri-prometheus 9090:9090
-```
-
-If those monitoring resources are absent, `deploy/monitoring/prometheus.yaml`
-must be applied as a separately approved disposable Kubernetes mutation before
-continuing.
-
-3. In terminal 2, start a disposable Qdrant using the version verified by this
-project:
-
-```bash
-docker run --rm --name kri-dev-qdrant \
-  --publish 127.0.0.1:6333:6333 \
-  qdrant/qdrant@sha256:12364fe851b9f17356fc88189fc06d1b521262e04659ec7345975b00c9246a10
-```
-
-4. Explicitly create or synchronize only the configured derived collection,
-   then run the read-only dependency preflight:
-
-```bash
-make sync-knowledge
-make dev-check
-```
-
-`dev-check` reports Prometheus, Qdrant, and a missing Qdrant collection
-separately, including the failing URL and recovery command. It never modifies a
-service.
-
-5. Start FastAPI and React in terminals 3 and 4:
-
-```bash
-make dev-api
-make dev-web
-```
-
-`make dev-api` repeats the preflight before invoking `kri-api`. Direct
-`kri-api` remains available when a partial API is useful. The React header
-checks `/healthz` immediately and displays a clear connection error if FastAPI
-is unavailable; operation-specific Prometheus or Qdrant failures retain the
-structured M10 error response.
-
-Open `http://127.0.0.1:5173`. Vite proxies `/api` and `/healthz` to
-`http://127.0.0.1:8000`, so the default setup needs no CORS expansion. Set
-`VITE_API_BASE_URL` for a different reverse-proxied base path; an absolute
-cross-origin URL additionally requires an externally configured CORS policy.
-
-The left column configures and controls the disposable application and its
-independent load Job, queries raw live metrics, plots each returned series, and
-keeps missing-data reports visibly distinct from zero. The right column makes
-the M4→M5→M8→M9 handoffs explicit: collect or load an observation, run the
-deterministic analyzer, optionally retrieve RAG evidence, and create or inspect
-the validated LLM input. Every stage exposes bounded summaries and expandable
-raw JSON for debugging.
-
-While a load experiment is running, the UI reconciles it every two seconds and
-stops polling at a terminal state. It displays controller submission time,
-Kubernetes Job start/end times, Job UID, final state, termination reason/source,
-and the exact Job condition message. Reconciliation failures remain visible and
-do not invent a terminal state.
-
-This M11 UI is intentionally local and disposable. It does not synchronize
-Qdrant, invoke an LLM, apply recommendations, add authentication, or provide
-production deployment packaging. Those current limitations are preserved until
-their owning M12–M18 milestones are implemented and verified; the roadmap does
-not imply that the existing client or API already provides them.
-
-## M12–M18 completion sequence
-
-M12 implements local inference and independent validation. M13–M17 remain the
-planned paired RAG evaluation, controlled recommendation-effectiveness
-experiments, artifact discovery and lineage, full FastAPI orchestration, and
-backend acceptance sequence. M18 starts only after that evidence is recorded
-and builds the final React client over frozen backend contracts. See
-`docs/PRODUCT.md`, `docs/ARCHITECTURE.md`, and `docs/ROADMAP.md` for product
-boundaries, component ownership, and acceptance criteria. No M13–M18
-functionality is implied by M12.
-
-## M12 local Qwen3 inference
-
-M12 consumes an integrity-checked M9 artifact, renders a deterministic
-source-bounded prompt, calls only the configured local Qwen3 model through
-Ollama, and persists the complete run under `results/inference/`. Raw output,
-the parsed candidate, independent validation report, and accepted-output digest
-remain distinct. Invalid output is retained as rejected or failed and is never
-silently repaired.
-
-Configure the exact model identity and bounded generation options in `.env`:
-
-```bash
-KRI_OLLAMA_MODEL=qwen3:4b
-KRI_OLLAMA_MODEL_DIGEST=<full lowercase digest from /api/tags>
-KRI_OLLAMA_TIMEOUT_SECONDS=180
-KRI_LLM_TEMPERATURE=0
-KRI_LLM_SEED=42
-KRI_LLM_CONTEXT_TOKENS=8192
-KRI_LLM_MAX_OUTPUT_TOKENS=2048
-```
-
-Run the opt-in verifier with a unique run ID and a retained M9 package:
-
-```bash
-python scripts/verify_m12_inference.py \
-  --package-directory results/llm-inputs \
-  --package-id llm-input-m10-api-20261101 \
-  --output-directory results/m12-verification \
-  --run-id m12-qwen3-rag-on \
-  --rag-mode on
-```
-
-`--rag-mode off` deterministically excludes knowledge excerpts while preserving
-the same M9 measurements, findings, recommendations, and uncertainties. Each
-run records its mode and prompt digest, enabling M13 to build paired evaluation
-plans. M12 itself does not implement the M13 reviewed dataset or comparative
-quality scoring. Inference is read-only with respect to Kubernetes, Prometheus,
-and Qdrant; only the named local result artifact is created.
+`make verify` runs formatting checks, linting, strict type checking, Python tests
+with 100% statement and branch coverage, frontend type checking, Vitest, and a
+production frontend build.
+
+For local service-backed development, copy `.env.example` to the ignored `.env`
+file and adjust it for your environment. Commands that build images, synchronize
+Qdrant, start load, or alter Kubernetes resources are intentionally outside the
+offline verification path and require operator review. See the architecture and
+milestone procedures linked below before using them.
+
+## Evaluation and status
+
+The implemented backend covers workload control and collection through local LLM
+validation, paired RAG evaluation, and recommendation-effectiveness evaluation
+(M0-M14). Artifact lineage, durable workflow orchestration, full real-service
+backend acceptance, and the final production-oriented UI remain planned
+(M15-M18). The current React application is a local testing console, not a
+production control plane.
+
+The latest controlled M14 V4 experiment is **inconclusive**. The 220m CPU-limit
+candidate showed descriptive improvements of **+40.59% throughput** and
+**-23.50% p95 latency**, but it missed the throttling objective and regressed
+throughput per average CPU core. More importantly, candidate trials continued
+after readiness-warning stop conditions had been triggered, making them
+procedurally invalid. The result is not evidence of a verified optimization.
+The exact objectives, limitations, rollback status, and artifact digests are in
+the [M14 V4 report](docs/M14_LOCAL_EXPERIMENT_REPORT_V4.md).
+
+Current limitations include a small M13 evaluation dataset, slow CPU-only local
+inference, loopback-oriented API/UI operation without production identity or TLS,
+and no valid real-cluster M14 acceptance result. Generated experiment data remains
+local by default; the repository retains only compact, reviewable evaluation
+plans, manifests, and reports.
+
+## Documentation
+
+- [Product scope](docs/PRODUCT.md)
+- [Architecture and component boundaries](docs/ARCHITECTURE.md)
+- [Versioned contracts](docs/CONTRACTS.md)
+- [Architectural decisions](docs/DECISIONS.md)
+- [Evaluation methodology](docs/EVALUATION.md)
+- [Roadmap and acceptance criteria](docs/ROADMAP.md)
+- [Verified progress and limitations](docs/PROGRESS.md)
+- [M14 V4 experiment plan](docs/M14_LOCAL_EXPERIMENT_PLAN_V4.md)
+- [M14 V4 experiment report](docs/M14_LOCAL_EXPERIMENT_REPORT_V4.md)
+
+Contributor and agent workflow constraints are kept in [AGENTS.md](AGENTS.md)
+rather than duplicated here.
