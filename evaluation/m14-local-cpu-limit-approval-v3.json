@@ -1,0 +1,9 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "m14-kri-workload-cpu-limit-20261109-v3",
+  "plan_sha256": "0a384b519d69d0242ba739b797e0235f0d943f77f9cc74bb416985d476c4a3d4",
+  "approved": true,
+  "decided_at": "2026-11-09T08:10:14Z",
+  "decided_by": "workspace-user",
+  "scope": "Only the mutations enumerated in docs/M14_LOCAL_EXPERIMENT_PLAN_V3.md: bounded error-counter initialization on current baseline and candidate Pods; creation and later deletion of the four fixed m14v3 load Jobs and their single owned Pods using cached tag kri-workload:lifecycle-smoke-20261109 with imagePullPolicy Never; one scoped candidate controller apply changing only cpu_limit from 140m to 220m with expected Deployment-owned rollout consequences and unchanged Service re-application; and one scoped rollback apply restoring cpu_limit to 140m with expected Deployment-owned rollout consequences and unchanged Service re-application. No other Kubernetes mutation is authorized."
+}

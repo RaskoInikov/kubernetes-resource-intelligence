@@ -38,7 +38,31 @@ terminal status cannot disappear before reconciliation.
 The load generator is rate-controlled but never queues beyond its configured
 concurrency. When the target is throttled or slow, excess scheduled arrivals are
 skipped and in-flight request timeouts are limited by the remaining configured
-duration so executor shutdown cannot drain an accumulated backlog.
+duration. Request workers are daemon threads rather than executor-owned threads:
+completed work receives a bounded one-second drain, after which any still-active
+request makes the process exit nonzero without blocking interpreter shutdown.
+The Kubernetes Job therefore receives a terminal container exit even if a
+network operation fails to honor its nominal socket timeout.
+
+The generator emits one final structured JSON summary. Successful requests,
+non-timeout request failures, timeouts, and workers still active after shutdown
+are counted independently. Request failures and timeouts are measured client
+outcomes: a run with no stuck worker exits zero and may complete as a Job while
+retaining those counts. A worker still active after the bounded drain is an
+execution failure and exits nonzero, so it still fails the Job and blocks M14.
+
+The summary is written both to stdout and the explicit Kubernetes termination
+log, including on exit zero. Terminal reconciliation accepts a successful Job
+only when its one owned Pod supplies a schema-valid summary whose execution
+status and exit code agree with Kubernetes. The versioned experiment record
+therefore preserves client-side request failures/timeouts rather than inferring
+success from Job state or application metrics alone.
+
+Load Jobs use `imagePullPolicy: Never`: their image tag must already resolve in
+the selected cluster node's runtime. This keeps local kind verification from
+turning a missing or synthetic import reference into an unreviewed registry
+pull. Application Deployments retain `IfNotPresent`; the policies are separate
+because load generation is an explicitly prepared experiment operation.
 
 ### Prometheus Collector
 Retrieves real workload time series.
@@ -236,6 +260,29 @@ Versioned rules classify the result as effective, ineffective, harmful, or
 inconclusive and retain trial variation, quality limitations, confounders, and
 exact source evidence. Experiment execution, cleanup, and effect calculation
 remain distinguishable.
+
+The M14 error guardrail remains strict when a Job completes with measured
+request failures. Each trial retains the application-observed HTTP error ratio
+and the client failure ratio `(request_failures + request_timeouts) /
+requests_started`; the policy-facing error ratio is their maximum. Missing
+either source is not replaced with zero and makes the measurement incomplete.
+
+The M14 evaluator is an offline artifact consumer. A digest-bound plan may copy
+one approval-required M5 recommendation into an exact candidate configuration,
+but it cannot submit, patch, stop, roll back, or clean up Kubernetes resources.
+Resolved trial inputs bind terminal experiment records to immutable observations
+by identity, timestamps, configuration, and SHA-256 digest. Metric values remain
+optional: missing signals and incomparable windows are report issues and force an
+inconclusive outcome rather than becoming zero.
+
+Policy 1.0 evaluates explicit objectives separately from regression guardrails.
+It aggregates repeated baseline and candidate trials, retaining per-trial values,
+means, population variation, absolute and relative effects, target attainment,
+confounders, and evidence references. A comparable result is effective only when
+all required objectives pass and no guardrail regresses; unmet objectives are
+ineffective, guardrail violations are harmful, and any integrity or sufficiency
+failure is inconclusive. Rollback and cleanup verification are reported but do
+not alter the measured outcome classification.
 
 ### Artifact Catalog and Lineage
 

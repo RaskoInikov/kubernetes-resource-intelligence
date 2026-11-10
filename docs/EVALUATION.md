@@ -59,7 +59,8 @@ constant except for declared deterministic M5 resource changes. Repeated trials
 compare:
 
 - `/work` throughput and configured-target attainment;
-- p95 latency and response errors;
+- p95 latency, application-observed response errors, and client-observed
+  request failures/timeouts;
 - CPU consumption and throttled-period ratio;
 - memory working set and pressure;
 - Pod readiness, restarts, events, and load lifecycle stability.
@@ -70,6 +71,45 @@ guardrails classify an outcome as effective, ineffective, harmful, or
 inconclusive. Missing dedicated error signals, unstable Pods, mismatched
 windows, insufficient samples, or unverified lifecycle can force an
 inconclusive result rather than becoming zero or success.
+
+A completed load Job is lifecycle-valid even when it measured request failures
+or timeouts, provided its retained schema-1.1 execution summary is valid and no
+worker was stuck. M14 computes the policy error ratio as the maximum of the
+application HTTP error ratio and the client failure ratio. Thus the lifecycle
+distinction does not weaken the existing error guardrail, and missing client
+evidence blocks comparison.
+
+Create an `EffectivenessPlanEnvelope` with `build_effectiveness_plan` from one
+M5 `AnalysisReport`, its exact baseline configuration, explicit objectives and
+guardrails, and a pinned image identity. The builder copies only the selected
+approval-required recommendation value. It does not contact Kubernetes. Any
+later experiment mutation requires a separate `EffectivenessApproval` and an
+explicit operator-controlled workflow outside the evaluator.
+Plans must include at least one required performance objective and one required
+efficiency objective, such as target throughput plus throughput per CPU core.
+
+After approved repeated runs have produced terminal experiment records and
+immutable observations, create an `EffectivenessTrialManifest` containing their
+exact paths and SHA-256 digests. Evaluate it without external-service access:
+
+```bash
+python scripts/evaluate_ab_experiments.py \
+  --m14-plan evaluation/<plan-envelope>.json \
+  --m14-approval evaluation/<approval>.json \
+  --m14-trials evaluation/<trial-manifest>.json \
+  --report-id <unique-report-id> \
+  --rollback-status not_verified \
+  --cleanup-status not_verified \
+  --output results/effectiveness/<unique-report-id>.json
+```
+
+M14 mode verifies plan/manifest binding, artifact roots and digests, distinct
+repetitions, terminal lifecycle, identities, exact configurations, load
+controls, windows, source quality, and required metrics. It refuses to
+overwrite a report. The output keeps per-trial values, evidence IDs,
+limitations, means, population standard deviations, absolute/relative effects,
+objective and guardrail results, confounders, and separate rollback/cleanup
+status. The command contains no Kubernetes or Prometheus client.
 
 ## Backend Acceptance (M17)
 

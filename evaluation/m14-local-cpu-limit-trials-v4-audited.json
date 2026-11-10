@@ -1,0 +1,59 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "m14-kri-workload-cpu-limit-20261109-v4",
+  "plan_sha256": "30b702973e197b197d55919b18c4be690f8af8e8bdba98b8a6db859197aaad7c",
+  "trials": [
+    {
+      "trial_id": "m14v4-base-1-20261109",
+      "role": "baseline",
+      "repetition": 1,
+      "experiment_id": "m14v4-base-1-20261109",
+      "experiment_path": "results/experiments/m14v4-base-1-20261109.json",
+      "experiment_sha256": "76b90594ad9043cb344f328baa41c8d67bdc855ced1c74f6da54adb6ce48b71d",
+      "observation_id": "obs-m14v4-base-1-20261109",
+      "observation_path": "results/observations/obs-m14v4-base-1-20261109.json",
+      "observation_sha256": "bb783a9249f5c8e7eed68786ba8f0db9531a7861c313efe7adfa10b9c7b4934e",
+      "declared_confounders": []
+    },
+    {
+      "trial_id": "m14v4-base-2-20261109",
+      "role": "baseline",
+      "repetition": 2,
+      "experiment_id": "m14v4-base-2-20261109",
+      "experiment_path": "results/experiments/m14v4-base-2-20261109.json",
+      "experiment_sha256": "09078da3a1c7b2f6070e09a7c7c339eb62e463e3dd080bad39636d4a6b4ee708",
+      "observation_id": "obs-m14v4-base-2-20261109",
+      "observation_path": "results/observations/obs-m14v4-base-2-20261109.json",
+      "observation_sha256": "da67045da84e4b94b7d990cb2995c02bfe3f5a96f2639b82f2f935e2b5c46192",
+      "declared_confounders": []
+    },
+    {
+      "trial_id": "m14v4-cand-1-20261109",
+      "role": "candidate",
+      "repetition": 1,
+      "experiment_id": "m14v4-cand-1-20261109",
+      "experiment_path": "results/experiments/m14v4-cand-1-20261109.json",
+      "experiment_sha256": "b23e13adeaaf0d9d60240a61f24de785a4c48b292efc3f9c9da93014e8e1b4a8",
+      "observation_id": "obs-m14v4-cand-1-20261109",
+      "observation_path": "results/observations/obs-m14v4-cand-1-20261109.json",
+      "observation_sha256": "32578097a47492e5be961f13387812e85d8bb468beaf3900035dd7c54a2ad189",
+      "declared_confounders": [
+        "Candidate rollout emitted transient Unhealthy readiness warnings at 2026-11-09T11:37:03Z and 2026-11-09T11:37:08Z before B1; the plan required stopping on a warning event, so this candidate trial is procedurally invalid."
+      ]
+    },
+    {
+      "trial_id": "m14v4-cand-2-20261109",
+      "role": "candidate",
+      "repetition": 2,
+      "experiment_id": "m14v4-cand-2-20261109",
+      "experiment_path": "results/experiments/m14v4-cand-2-20261109.json",
+      "experiment_sha256": "eb0adafdd849067a6673ab7d59398ec67a6ffb5a98bc2d9a3f273770559d0dd3",
+      "observation_id": "obs-m14v4-cand-2-20261109",
+      "observation_path": "results/observations/obs-m14v4-cand-2-20261109.json",
+      "observation_sha256": "48834c2c325b377a6114c3db69b0f6cc853a05d2f3853006fdd04dbed4275ca7",
+      "declared_confounders": [
+        "Candidate rollout emitted transient Unhealthy readiness warnings at 2026-11-09T11:37:03Z and 2026-11-09T11:37:08Z before B1; the plan required stopping on a warning event, so this candidate trial is procedurally invalid."
+      ]
+    }
+  ]
+}

@@ -1,10 +1,22 @@
 # Project Progress
 
 ## Current milestone
-M13 — Reproducible RAG-on/off LLM quality evaluation (complete, offline and
-fresh real-service evaluated; prompt 1.5 CPU follow-up accepted in both modes)
+M14 — Evidence-based recommendation effectiveness (offline implementation
+complete; approved repeated real-cluster acceptance pending)
 
 ## Completed
+- M14 adds schema-1.0 digest envelopes for a preflight plan and outcome report,
+  a separate approval record, digest-bound repeated trial manifests, explicit
+  performance/efficiency objectives and regression guardrails, per-trial
+  optional measurements, uncertainty and confounder retention, variation,
+  evidence references, and separate rollback/cleanup verification.
+- The existing A/B evaluator now has a read-only M14 mode. It verifies artifact
+  containment and digests, terminal lifecycle, workload/load/configuration
+  identity, observation windows, repetitions, and measurement sufficiency. It
+  classifies sufficient evidence as effective, ineffective, or harmful and
+  forces missing, incomparable, corrupted, or confounded evidence to
+  inconclusive. It contains no Kubernetes mutation path and refuses report
+  overwrite.
 - M13 adds a versioned, digest-bound quality dataset with distinct author and
   reviewer roles, leakage notes, two retained finding-bearing incident cases,
   fixed Qwen3 identity/options, two repetitions, reviewed facts,
@@ -482,6 +494,333 @@ fresh real-service evaluated; prompt 1.5 CPU follow-up accepted in both modes)
 - Post-run `make verify` passed on 2026-11-03 with Ruff, strict mypy, 303 Python
   tests at 100% statement and branch coverage, ten Vitest tests, strict
   TypeScript, and a Vite production build.
+- A read-only M14 local-cluster preflight on 2026-11-06 confirmed that
+  `payments/kri-workload` still has Deployment UID
+  `3360fb27-d522-4b1d-9774-aa9e359e301a`, resourceVersion `1195095`, two Ready
+  replicas, the exact `90m/140m` CPU and `109Mi/192Mi` memory baseline, and one
+  shared runtime image digest. The node was Ready with no reported pressure;
+  no Kubernetes resources or workload traffic were created or changed.
+- The digest-bound, unapproved M14 plan proposes only the retained deterministic
+  recommendation `cpu_limit: 140m -> 220m`, with two baseline and two candidate
+  trials, fixed objectives/guardrails, explicit stop/rollback/cleanup rules,
+  and immutable artifact destinations. Its plan digest is
+  `612af134d27a524e300c6f80e36c4367b5060a3ed10d7ab34f6a90d75130062e`.
+- Follow-up read-only inspection corrected the monitoring diagnosis: the prior
+  check used namespace `monitoring` instead of `kri-monitoring`. All nine live
+  monitoring objects match the checked-in manifest, Prometheus is 1/1 Ready,
+  its Service endpoint is populated, and Prometheus, cAdvisor, and both
+  application targets report `up`. Local access failed only because no process
+  forwards the ClusterIP Service to `localhost:9090`; no manifest apply is
+  needed.
+- At that point M14 execution remained blocked pending explicit experiment
+  approval and local access restoration. Missing required metrics must stop a
+  future run or yield `inconclusive`.
+- Local Prometheus access was restored at `2026-11-06T14:36:41Z` with only a
+  foreground `127.0.0.1:9090` port-forward to the existing Service. No manifest
+  was applied: monitoring/workload resourceVersions remained `1154524` and
+  `1195095`, and no M14 load Job was created.
+- Exactly one zero-work success and one bounded invalid diagnostic request were
+  sent to each application Pod outside any experiment window. Subsequent
+  20-second range checks found five samples per series for both Pods across all
+  required M14 CPU, throttling, memory, request, error, and latency families;
+  all four scrape targets remained `up` without errors.
+- The exact M14 plan was approved and attempted on 2026-11-08. Baseline A1
+  started at `09:37:34Z` with the planned 120-second mixed load but Kubernetes
+  terminated it as `Failed/DeadlineExceeded` at `09:40:55Z`. The mandatory stop
+  rule prevented A2, the candidate rollout, B1, and B2 from starting.
+- A1's immutable 120-second observation retained 70 normalized series and
+  1,750 samples. It was degraded only because no related Kubernetes events were
+  reported. Descriptive values include 11.5583 requests/second, 57.79% target
+  attainment, 0.611648-second p95, 86.32% mean throttled-period ratio, and zero
+  measured error ratio; no candidate effect can be inferred.
+- Offline M14 evaluation classified report
+  `m14-kri-workload-cpu-limit-20261108` as `inconclusive` because A1 failed and
+  the required two baseline/two candidate comparisons are absent. Report digest
+  is `9ee9834a4065060d39fdfcf8cb3a62110326a7b3473219d1c00637dd1bc87f1d`.
+  Cleanup and restoration are verified: only A1's Job was deleted, no candidate
+  rollout occurred, and the original Deployment remains UID/resourceVersion
+  `3360fb27-d522-4b1d-9774-aa9e359e301a`/`1195095` at `90m/140m` CPU and
+  `109Mi/192Mi` memory.
+- Offline diagnosis on 2026-11-09 reproduced A1's lifecycle failure: a 50 ms
+  load run with one non-returning request was still alive after 500 ms because
+  `ThreadPoolExecutor` performs an unconditional `shutdown(wait=True)`. A socket
+  timeout was not a hard process deadline, so Kubernetes eventually supplied
+  A1's `DeadlineExceeded` terminal state.
+- The load generator now uses concurrency-bounded daemon request workers,
+  retains the no-queue admission policy, drains completed requests for at most
+  one second, and exits nonzero if any request remains active. A new stuck-I/O
+  regression verifies bounded return. No Kubernetes resource, recommendation,
+  M14 plan value, or retained experiment artifact was changed, and M14 was not
+  rerun.
+- Post-fix offline verification passed on 2026-11-09: the isolated stuck-I/O
+  reproduction exited status 1 after approximately 1.1 seconds; 43 workload
+  tests passed; and full verification passed with Ruff, formatting, strict
+  mypy, 340 Python tests at 100% statement/branch coverage, 10 Vitest tests,
+  strict TypeScript, and the Vite production build.
+- Real local-kind verification passed on 2026-11-09 with the separate
+  `lifecycle-smoke-20261109` experiment. The uniquely tagged corrected image
+  ran one 10-second mixed-load Job, whose container exited 0 after 11 seconds
+  with no restart and whose Job reached `Complete`/`CompletionsReached` after
+  14 seconds, safely inside its 70-second active deadline. The runtime image
+  digest was
+  `import-2026-11-09@sha256:c0cd3e143d5bb04237340cdea0bc14b0709cce17911152a34faa375bc7e5889e`.
+  The disposable Job was deleted, while the original application Deployment
+  retained its UID, resourceVersion, generation, image, `90m/140m` CPU, and
+  2/2 readiness. No M14 A/B trial or candidate rollout was started.
+- Revised M14 plan v2 was prepared without cluster mutation on 2026-11-09. It
+  pins the verified load-generator runtime digest separately from the unchanged
+  target application image, assigns four fresh `m14v2-*` trial IDs, preserves
+  policy 1.0 objectives and guardrails, and enumerates the exact Job creation,
+  counter initialization, candidate rollout, rollback, unchanged-Service
+  re-application, and Job cleanup operations that require later approval. The
+  validated plan digest is
+  `e41ce61c3e5a64a7a01b2f35a0c707c6df606e02c294950563fb9f720d39027a`;
+  no v2 approval or trial manifest was created at planning time.
+- M14 v2 execution was approved on 2026-11-09 but stopped at A1's mandatory
+  warning-event gate. The digest-form kind import was present in containerd,
+  yet kubelet attempted to pull its synthetic repository and the load Pod
+  entered `ErrImagePull`/`ImagePullBackOff` without starting. Substituting the
+  cached source tag was outside the approved digest-pinned plan, so A2, the
+  candidate rollout, B1, and B2 were not started.
+- The v2 evaluator classified report
+  `m14-kri-workload-cpu-limit-20261109-v2` as `inconclusive`: A1 was stopped,
+  its 94.5-second failure window was short and degraded, three repetitions were
+  absent, and required comparisons were incomplete. No objective or guardrail
+  was decided. Report content digest is
+  `7e24c6a96bded1515196e00960b93e8693fc1a617d04a04e09366f17a161c4dc`.
+- M14 v2 rollback and cleanup are verified. Only the approved A1 Job and owned
+  Pod were created and deleted. No candidate apply occurred; the original
+  Deployment UID/resourceVersion/generation, sole ReplicaSet, two Pod UIDs,
+  image, resources, readiness, and restart counts remain unchanged. All four
+  v2 Job names are absent and no mutation outside the approved scope occurred.
+- The local load-image resolution was corrected and verified on 2026-11-09
+  without an M14 trial. Load Jobs now render the node-cached tag with
+  `imagePullPolicy: Never`; application Deployments retain `IfNotPresent`.
+  Disposable Pod `kri-load-image-resolution-20261109` used tag
+  `kri-workload:lifecycle-smoke-20261109`, resolved to runtime digest
+  `import-2026-11-09@sha256:c0cd3e143d5bb04237340cdea0bc14b0709cce17911152a34faa375bc7e5889e`,
+  imported `kri_workload.load`, printed `load-image-ok`, and exited 0 with no
+  restart. Its events explicitly reported the image already present on the
+  machine, with no registry-pull attempt or warning. The Pod was deleted, and
+  the application Deployment retained its original UID/resourceVersion,
+  generation, image, `IfNotPresent` policy, resources, and 2/2 readiness.
+- M14 v3 was prepared without Kubernetes access or trial execution on
+  2026-11-09. Plan `m14-kri-workload-cpu-limit-20261109-v3` uses cached tag
+  `kri-workload:lifecycle-smoke-20261109` with `imagePullPolicy: Never`, requires
+  the verified runtime digest after scheduling, and assigns four fresh
+  `m14v3-*` experiment/observation identities. Resource values, load controls,
+  policy 1.0 objectives, guardrails, uncertainty handling, rollout, rollback,
+  and cleanup boundaries remain unchanged. The exact mutation ledger includes
+  application counter initialization, four fixed Job/Pod lifecycles, one
+  candidate apply, one rollback apply, controller-owned rollout consequences,
+  unchanged-Service re-application, and only v3 Job cleanup. Plan digest is
+  `0a384b519d69d0242ba739b797e0235f0d943f77f9cc74bb416985d476c4a3d4`;
+  no v3 approval or trial manifest existed at planning time.
+- M14 v3 execution was approved on 2026-11-09. The full preflight passed and
+  A1 resolved the cached tag with `imagePullPolicy: Never` to the verified
+  runtime digest without a pull attempt. It ran the complete 120-second window
+  but exited 1; Kubernetes recorded `BackoffLimitExceeded`. Because the load
+  generator returns nonzero for any request exception or a worker still active
+  after its shutdown grace and emits no per-request failure log, retained
+  evidence cannot distinguish those causes. The mandatory failed-Job gate
+  stopped A2, the candidate rollout, B1, and B2.
+- The v3 evaluator classified report
+  `m14-kri-workload-cpu-limit-20261109-v3` as `inconclusive`. A1's exact window
+  retained 70 normalized series and 1,750 samples, but its failed lifecycle,
+  degraded event evidence, and missing repetitions block every objective and
+  guardrail decision. Report content digest is
+  `017110aa7803111a4fc937d365b5d0f291247b5f030b524b2a1ce67e23725ca2`.
+- M14 v3 rollback and cleanup are verified. Only the approved A1 Job and owned
+  Pod were created and deleted. No candidate apply occurred; the original
+  Deployment UID/resourceVersion/generation, sole ReplicaSet, both application
+  Pod UIDs, image, resources, readiness, and restart counts remain unchanged.
+  All v3 Job names are absent and no mutation outside approval occurred.
+- Load-generator diagnostics were improved offline on 2026-11-09 without an
+  M14 rerun or Kubernetes mutation. Each configured run now emits one final
+  schema-1.0 JSON summary with separate succeeded, failed, timed-out, and stuck
+  worker counts. Stable exits 2/3/4/5 identify request failure, timeout, stuck
+  worker, or multiple modes; exit 0 remains the sole success. Load Pods use
+  `FallbackToLogsOnError` so Kubernetes can retain the summary as the container
+  termination message. The evaluator still rejects every nonzero lifecycle.
+- One bounded real-cluster diagnostic Pod verified that behavior on 2026-11-09
+  without starting an M14 Job or changing the application Deployment. Image
+  `kri-workload:diagnostics-20261109` was built from the updated source, loaded
+  into kind, and selected from the node cache with `imagePullPolicy: Never`.
+  A one-second request to the Pod's closed loopback port produced exactly one
+  request failure, process/Kubernetes exit code 2, reason `Error`, and a
+  schema-1.0 summary with zero timeouts and zero stuck workers. Kubernetes'
+  termination message matched stdout exactly under `FallbackToLogsOnError`.
+  The Pod ran from `2026-11-09T09:14:53Z` through `09:14:54Z` and was deleted.
+  No load-generator Job remained, and the application Deployment retained UID
+  `3360fb27-d522-4b1d-9774-aa9e359e301a`, resourceVersion `1195095`, generation
+  1, image `kri-workload:local`, resources `90m/140m` CPU and `109Mi/192Mi`
+  memory, and 2/2 readiness before and after the test. Offline tests continue
+  to cover the complete 0/2/3/4/5 exit-code mapping; this single real-cluster
+  test intentionally exercised only the deterministic request-failure path.
+- A separate 120-second V3 baseline failure-diagnostic plan was prepared on
+  2026-11-09 without Kubernetes mutation. Plan
+  `m14-v3-baseline-diagnostic-20261109` pins the unchanged V3 baseline and load
+  settings, verified diagnostic tag/runtime digest, one fresh non-trial Job,
+  one owned Pod, evidence capture, and Job/Pod cleanup. It explicitly prohibits
+  candidate trials and every application, monitoring, or image-cache mutation.
+  Execution requires approval quoting the plan ID and exact plan-file SHA-256
+  `6964669ecb43e27047b95f26c4128cad488732ce0aec3b8621b5bc3500cac8f1`.
+  Offline rendering verified the fixed Job name, image, pull and termination
+  policies, load settings, resource bounds, restart policy, and 180-second
+  deadline. A read-only readiness snapshot then confirmed the exact context,
+  unchanged Deployment UID/resourceVersion/generation and baseline resources,
+  2/2 ready application Pods at the pinned runtime image with historical
+  restart count 3 each, the unused Job and record IDs, Ready/pressure-free
+  node, cached diagnostic tag at the pinned runtime digest, Ready Prometheus,
+  and healthy application and cAdvisor targets. The sole retained warning is
+  V3 A1's historical `BackoffLimitExceeded` event at `08:13:32Z`. This
+  snapshot authorizes nothing and must be repeated after approval immediately
+  before execution. No diagnostic Job or other Kubernetes mutation occurred.
+- The digest-bound V3 baseline diagnostic was approved and executed once on
+  2026-11-09. Mandatory preflight repeated successfully, then the sole Job
+  `kri-load-m14v3-diag-base-20261109` ran the original mixed/concurrency-4/
+  20-rps/120-second baseline load with the pinned diagnostic image. Its one
+  Pod ran from `09:37:50Z` through `09:39:51Z`, selected the cached image at
+  runtime digest `7199ce4354f3c13ba9f82f114f8a9695ec309c8a88d2b0459301c6f49af6c052`,
+  and had zero restarts. The failure reproduced as exit 3
+  (`request_timeout`): 1,498 requests started and completed, 1,494 succeeded,
+  four timed out, none had a non-timeout failure, and no worker was stuck.
+  The schema-1.0 stdout summary exactly matched Kubernetes' termination
+  message and exit code; the Job consequently ended
+  `BackoffLimitExceeded`, preserving the unchanged nonzero-lifecycle guardrail.
+  This identifies timeout as V3's immediate generator failure class but does
+  not identify the individual slow requests or evaluate the CPU recommendation.
+  Evidence is retained in
+  `results/m14-v3-baseline-diagnostic-20261109.json` and the terminal experiment
+  record. Cleanup deleted only the approved Job and owned Pod. All
+  load-generator Jobs are absent, while the original Deployment and Pod
+  identities, image, resourceVersion/generation, resources, readiness, and
+  restart counts remain unchanged. No candidate trial or application mutation
+  occurred.
+- Load execution and measured request outcomes were separated offline after the
+  V3 diagnostic. Load-summary schema 1.1 now exits zero with
+  `execution_status: completed` when all workers return, even if request
+  failures or timeouts were measured; only a stuck worker is a generator
+  execution failure and exits 4. The same summary is written to stdout and the
+  explicit Kubernetes termination log. New experiment-record schema 1.2 accepts
+  a succeeded Job only after reconciling exactly one owned Pod and validating
+  that summary against the container exit code; failed/stopped records remain
+  lifecycle-invalid for M14 and may preserve a summary when available.
+- M14 report/evaluator schema 1.1 retains the application HTTP error ratio,
+  client failure ratio and counts, and uses their maximum as the unchanged
+  policy-facing error ratio. Missing either source remains a blocking
+  measurement limitation rather than becoming zero. The web contract and
+  status panel expose the retained client outcomes. `make verify` passed with
+  Ruff, formatting, strict mypy, 359 Python tests at 100% statement/branch
+  coverage, ten frontend tests, TypeScript checking, and a production build.
+  Verification was offline: no image was rebuilt or loaded, no Kubernetes
+  resource was changed, and no M14 trial was rerun. A separately approved image
+  build/load and bounded real-cluster lifecycle check remain required before
+  relying on this behavior in a new experiment.
+- A minimal real-cluster lifecycle verification was prepared for separate
+  approval as
+  plan `load-generator-schema12-timeout-verification-20261109` in
+  `docs/LOAD_GENERATOR_SCHEMA12_REAL_CLUSTER_VERIFICATION_PLAN.md`, SHA-256
+  `a74df3bd902daa238db59f94d6e0b4864e6b03685abc08e7fac8532bb7c15a7a`.
+  It pins all image build inputs and authorizes, only after separate approval,
+  one fresh cached image, one 15-second concurrency-4 Job, schema-1.2 evidence
+  reconciliation, and deletion of that Job/owned Pod. Passing requires at least
+  one separately recorded request timeout with process exit 0, a completed Job,
+  and exact equality between stdout, termination-message, and persisted
+  `load_summary`; zero observed timeouts is inconclusive and does not authorize
+  a retry. Read-only preflight found the baseline Deployment and two application
+  Pods unchanged and Ready, a healthy node, no load-generator resources, and no
+  pre-existing fresh tag or record. The fixed Job render was validated offline
+  and `git diff --check` passed. No image, cluster resource, application,
+  request stream, or experiment record was changed or created during plan
+  preparation.
+- The digest-bound schema-1.2 lifecycle plan was approved and executed once on
+  2026-11-09. The fresh image had local ID
+  `sha256:7a608b497c785452d65fbf9ebd06183d4da29cf6237120fd56de57b489a4733b`
+  and resolved from the kind node cache to runtime digest
+  `sha256:3980b56b915b631157ca6bf8df8ae6c77f503fc77eb7881c25ef402e3325eba8`.
+  The sole 15-second Job used exactly one owned Pod with zero restarts and
+  terminated normally: all 180 started requests completed, 176 succeeded,
+  four timed out, none had a non-timeout request failure, and no worker was
+  stuck. The schema-1.1 summary therefore retained the measured timeouts with
+  `execution_status: completed` and exit 0; Kubernetes recorded container
+  reason `Completed` and Job `Complete=True`, not a failed Job. Stdout and the
+  termination message matched exactly. Controller reconciliation persisted a
+  succeeded schema-1.2 record with the same `load_summary`, Job UID
+  `96b8e432-bab9-4156-8531-d322d39d50fb`, and Kubernetes timestamps at
+  `results/experiments/schema12-timeout-20261109.json`; its SHA-256 is
+  `57e3a9cadaf9b6a376d6f2651850e7867a640f4d7a000a561c6614296ab07908`.
+  Approved cleanup removed only the fixed Job and owned Pod. Final assertions
+  found no load-generator resources and confirmed the application Deployment
+  UID, resourceVersion, generation, image, resources, replicas, both Pod UIDs,
+  readiness, and restart counts were unchanged. The retained experiment record
+  and fresh local/node image tag are the plan's intentional residual evidence;
+  no M14 trial or application/monitoring mutation occurred.
+- M14 V4 was prepared for separate approval in
+  `docs/M14_LOCAL_EXPERIMENT_PLAN_V4.md` and the validated machine envelope
+  `evaluation/m14-local-cpu-limit-plan-v4.json`. Its plan ID is
+  `m14-kri-workload-cpu-limit-20261109-v4`, canonical plan SHA-256 is
+  `30b702973e197b197d55919b18c4be690f8af8e8bdba98b8a6db859197aaad7c`,
+  envelope file SHA-256 is
+  `6d2f6b54ee896e1743355bd46c5aa06007e22b8249bcee7b3e42790c176c4e5b`,
+  and plan-document SHA-256 is
+  `28f49ba72be1bc5d851be3bd68c4914e76e24875b28867e7b503c3c3ece64da9`.
+  Fresh A1/A2/B1/B2 IDs use the verified cached schema-1.2 load image and retain
+  the exact V3 baseline, candidate, load, objectives, guardrails, repetition
+  count, uncertainty treatment, rollout, and rollback. Eligibility now requires
+  exact schema-1.1 termination evidence in each succeeded schema-1.2 experiment
+  record; application and client failure evidence feed the unchanged strict
+  error guardrail. Contract validation, byte-equivalent policy comparisons,
+  all four offline Job renders, candidate/rollback scope, and artifact absence
+  passed; 53 targeted effectiveness/workload tests and `git diff --check`
+  passed. Read-only cluster inspection found the baseline application Ready,
+  the node healthy, no load Jobs, all V4 IDs absent, the verified load runtime
+  digest cached, and in-cluster Prometheus 1/1 Ready. At
+  `2026-11-09T11:23:36Z`, the existing loopback Prometheus port-forward was
+  alive and needed no replacement. Prometheus, cAdvisor, and both application
+  targets were healthy without scrape errors; all ten required M14 families
+  returned 42 series and 294 finite samples over a 30-second no-load window.
+  Monitoring and workload identities/resourceVersions remained unchanged, and
+  no load Job existed. No approval/trial manifest was created and no image,
+  diagnostic traffic, experiment, or Kubernetes mutation occurred during plan
+  preparation. Target and metric readiness remained mandatory immediately
+  before execution.
+- M14 V4 was approved and all four fixed trials executed on 2026-11-09 with
+  the pinned cached schema-1.2 image. Every Job completed with one Pod, zero
+  restarts, exit 0, no stuck worker, exact stdout/termination/schema-1.2
+  evidence, and all ten metric families. A1/A2 completed 1,465/1,544 requests
+  with three timeouts each; B1/B2 completed 2,057/2,072 with three/two
+  timeouts; no non-timeout client failure occurred. Baseline observations had
+  70 series/1,750 samples each but remained degraded solely because no related
+  Kubernetes event was reported; B1/B2 had complete quality with 70 series and
+  1,747/1,750 samples.
+- The authoritative V4 result is `inconclusive`. Candidate throughput and
+  target attainment improved 40.59%, latency improved 23.50%, client-aware
+  error ratio improved 39.27%, and all five guardrails passed. The throttling
+  objective failed (2.41% improvement, candidate ratio 0.79646 versus required
+  20% and <=0.60) and throughput-per-CPU-core failed (8.70% regression).
+  Baseline quality limitations block a causal decision. In addition, transient
+  candidate-rollout readiness warnings at `11:37:03Z`/`11:37:08Z` were found
+  during the final audit; B1/B2 had been run despite the plan's warning-event
+  stop condition, so both are explicitly confounded and the procedural
+  violation is retained. Similar rollback-startup warnings mean formal
+  rollback verification is `failed`, although the exact baseline configuration
+  is restored and healthy. Cleanup is `verified`: all load Jobs/Pods are absent,
+  baseline ReplicaSet is 2/2, candidate ReplicaSet is 0/0, both current Pods are
+  Ready with zero restarts, the Service is unchanged, the node has no pressure,
+  and all four monitoring targets are healthy.
+- The V4 report is in `docs/M14_LOCAL_EXPERIMENT_REPORT_V4.md` (SHA-256
+  `6bfb8bc9043b50a7f8351e662856a31ffc41087cb9d36b09f718fc25d244a24f`).
+  The authoritative audited manifest SHA-256 is
+  `e14bb17d74956995704f2d107d10f289252970b21dc07c3cb22b5f8ce756e9f6`;
+  audited report content/envelope SHA-256 values are
+  `9b5da27b6f9eb254e72a4623ae2fdffbb82f59f9858644f7fff90d1826090f10`
+  and
+  `6645be759284aecfcaa1ffd4fbff27d473c11be435a4fb46440a277af6065dd3`.
+  The preliminary report that marked rollback verified is preserved and
+  superseded, not overwritten. No mutation outside the plan's enumerated
+  resource names/fields occurred, but the missed stop sequence is not treated
+  as compliant execution.
 - M12–M18 planning was documented on 2026-11-03 without implementing new
   functionality. A consistency check confirmed exactly one roadmap acceptance
   section for every M0–M18 milestone and one decision entry for every D001–D025,
@@ -566,20 +905,31 @@ fresh real-service evaluated; prompt 1.5 CPU follow-up accepted in both modes)
   strict mypy over 48 source files, 325 Python tests at 100% statement and
   branch coverage, ten Vitest tests, strict TypeScript, and a Vite production
   build. The suite remained offline; real Ollama runs are retained separately.
+- M14 offline `make verify` passed on 2026-11-06 with Ruff, formatting, strict
+  mypy over 50 source files, 339 Python tests at 100% statement and branch
+  coverage, ten Vitest tests, strict TypeScript, and a Vite production build.
+  Verification used synthetic and retained artifacts only and performed no
+  Kubernetes or external-service operation.
 
 ## Next
-M0–M13 are complete. Implement M14's controlled recommendation-effectiveness
-evaluation. M14–M17 must complete and verify all remaining
-backend, ML, retrieval, experiment, lineage, API, and reliability work before
-M18 begins.
+Obtain explicit approval for one bounded, disposable M14 plan, run at least two
+baseline and two candidate trials with terminal lifecycle and complete metrics,
+verify rollback/cleanup separately, and retain the real digest-bound report.
+M15 must not begin until that real M14 acceptance evidence exists. M14–M17 must
+complete before M18 begins.
 
 ## Known limitations
 - The cluster Metrics API was unavailable during M1 verification; load evidence
   used application process CPU and network receive counters instead.
 - The verified workload image remains cached on the disposable kind node.
-- M14–M18 are planned but not implemented. M10 and M11 are loopback-only development
-  tools and do not provide production authentication, authorization, TLS, or
-  deployment packaging.
+- M15–M18 are planned but not implemented. M10 and M11 are loopback-only
+  development tools and do not provide production authentication,
+  authorization, TLS, or deployment packaging.
+- M14 real-cluster acceptance is pending explicit approval. The retained 2026-11-02
+  A/B pair is not eligible: its records are nonterminal, its dedicated error
+  metric is missing, it changes three resources together, and it has no repeated
+  trials or verified image identity. It therefore remains descriptive evidence,
+  not a favorable effectiveness result.
 - M11 has offline component coverage and a production build, but has not yet
   been exercised in a browser against live Kubernetes, Prometheus, and Qdrant
   services.

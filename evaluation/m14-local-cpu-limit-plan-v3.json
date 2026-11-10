@@ -1,0 +1,135 @@
+{
+  "schema_version": "1.0",
+  "plan_sha256": "0a384b519d69d0242ba739b797e0235f0d943f77f9cc74bb416985d476c4a3d4",
+  "plan": {
+    "schema_version": "1.0",
+    "plan_version": "1.0",
+    "policy_version": "1.0",
+    "plan_id": "m14-kri-workload-cpu-limit-20261109-v3",
+    "created_at": "2026-11-09T08:03:15Z",
+    "created_by": "codex-v3-preflight",
+    "source_analysis_id": "analysis-m14-preflight-source",
+    "source_analysis_sha256": "6cf31468819fc03074421ccf4f8f9a7e0e8976c263ba9941b71301259bcda22e",
+    "source_observation_sha256": "3bdd9ca4d13581e6e847b4ea817979533ba79469f8e1ca8fdaa4ddbc8073ef5d",
+    "source_recommendation_id": "increase-cpu-limit",
+    "source_evidence_ids": [
+      "resource-cpu-limit",
+      "series-0001",
+      "series-0002",
+      "series-0003",
+      "series-0004",
+      "series-0007",
+      "series-0008"
+    ],
+    "source_requires_approval": true,
+    "context": "kind-kube-optimizer",
+    "cluster": "kind-kube-optimizer",
+    "namespace": "payments",
+    "workload": "kri-workload",
+    "image_identity": "docker.io/library/import-2026-10-31@sha256:ad6d70e96f19ec8472b41f2e135139da33c36fb1f22a83d23ce019f682807d91",
+    "baseline_configuration": {
+      "schema_version": "1.0",
+      "cpu_request": "90m",
+      "cpu_limit": "140m",
+      "memory_request": "109Mi",
+      "memory_limit": "192Mi",
+      "replicas": 2
+    },
+    "candidate_configuration": {
+      "schema_version": "1.0",
+      "cpu_request": "90m",
+      "cpu_limit": "220m",
+      "memory_request": "109Mi",
+      "memory_limit": "192Mi",
+      "replicas": 2
+    },
+    "mutation": {
+      "field": "cpu_limit",
+      "baseline_value": "140m",
+      "candidate_value": "220m"
+    },
+    "load_configuration": {
+      "schema_version": "1.0",
+      "workload_mode": "mixed",
+      "concurrency": 4,
+      "request_rate": 20.0,
+      "duration_seconds": 120
+    },
+    "repetitions": 2,
+    "observation_window_seconds": 120,
+    "stop_conditions": [
+      "Do not start until explicit approval binds this exact plan ID and digest and covers every mutation listed in docs/M14_LOCAL_EXPERIMENT_PLAN_V3.md.",
+      "Do not start unless the target application remains at the pinned image digest and exact 90m/140m/109Mi/192Mi two-replica baseline.",
+      "Do not start unless cached tag kri-workload:lifecycle-smoke-20261109 is present on the kind node, the rendered load Job uses imagePullPolicy Never, and every trial Pod resolves to runtime digest import-2026-11-09@sha256:c0cd3e143d5bb04237340cdea0bc14b0709cce17911152a34faa375bc7e5889e.",
+      "Do not start until Prometheus is ready and every required metric family returns usable series.",
+      "Stop on a failed load Job, any application Pod not Ready, a new container restart, warning event, node pressure, target or load image drift, configuration drift, co-tenant drift, or unavailable required metric."
+    ],
+    "rollback_procedure": "After candidate trial 2, or immediately after any post-rollout stop condition, use the scoped workload controller with KRI_WORKLOAD_IMAGE=kri-workload:local to re-apply the exact 90m/140m/109Mi/192Mi two-replica baseline; wait for rollout and verify Deployment UID, resources, target image digest, readiness, and no new warning events.",
+    "cleanup_procedure": "After terminal records and observations are saved and digested, explicitly stop only the four v3 plan-owned Jobs; retain immutable artifacts, verify all four Jobs are absent, and never delete the application. If candidate configuration was applied, rollback is mandatory before cleanup is declared verified.",
+    "experiment_artifact_root": "results/experiments",
+    "observation_artifact_root": "results/observations",
+    "objectives": [
+      {
+        "objective_id": "reduce-cpu-throttling",
+        "metric": "throttle_ratio",
+        "direction": "lower",
+        "minimum_relative_improvement": 0.2,
+        "target_value": 0.6,
+        "required": true
+      },
+      {
+        "objective_id": "increase-target-attainment",
+        "metric": "target_attainment",
+        "direction": "higher",
+        "minimum_relative_improvement": 0.1,
+        "target_value": 0.75,
+        "required": true
+      },
+      {
+        "objective_id": "preserve-cpu-efficiency",
+        "metric": "throughput_per_cpu_core",
+        "direction": "higher",
+        "minimum_relative_improvement": 0.0,
+        "target_value": null,
+        "required": true
+      }
+    ],
+    "guardrails": [
+      {
+        "guardrail_id": "p95-latency",
+        "metric": "p95_latency_seconds",
+        "direction": "lower",
+        "maximum_relative_regression": 0.05,
+        "absolute_limit": 0.75
+      },
+      {
+        "guardrail_id": "http-errors",
+        "metric": "error_ratio",
+        "direction": "lower",
+        "maximum_relative_regression": 0.0,
+        "absolute_limit": 0.01
+      },
+      {
+        "guardrail_id": "pod-readiness",
+        "metric": "ready_ratio",
+        "direction": "higher",
+        "maximum_relative_regression": 0.0,
+        "absolute_limit": 1.0
+      },
+      {
+        "guardrail_id": "container-restarts",
+        "metric": "restarts",
+        "direction": "lower",
+        "maximum_relative_regression": 0.0,
+        "absolute_limit": 0.0
+      },
+      {
+        "guardrail_id": "memory-working-set",
+        "metric": "memory_p95_bytes",
+        "direction": "lower",
+        "maximum_relative_regression": 0.15,
+        "absolute_limit": 402653184.0
+      }
+    ]
+  }
+}

@@ -1,0 +1,19 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "m14-kri-workload-cpu-limit-20261109-v3",
+  "plan_sha256": "0a384b519d69d0242ba739b797e0235f0d943f77f9cc74bb416985d476c4a3d4",
+  "trials": [
+    {
+      "trial_id": "m14v3-base-1-20261109",
+      "role": "baseline",
+      "repetition": 1,
+      "experiment_id": "m14v3-base-1-20261109",
+      "experiment_path": "results/experiments/m14v3-base-1-20261109.json",
+      "experiment_sha256": "e081f32a668adf2c713876a8646b775f823955b71552de1400e62f4faa2d8196",
+      "observation_id": "obs-m14v3-base-1-20261109",
+      "observation_path": "results/observations/obs-m14v3-base-1-20261109.json",
+      "observation_sha256": "794e00bd8689aa2ac20e3cf52004d52d1f9451c90a4df7b58da0630fb4aa96cf",
+      "declared_confounders": []
+    }
+  ]
+}

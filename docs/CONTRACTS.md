@@ -23,9 +23,27 @@ are skipped while all workers are occupied rather than accumulated in an
 unbounded queue. It stops scheduling at the configured duration, and each
 request timeout is capped by the remaining experiment time.
 
+Every normally configured run writes one final JSON execution summary to stdout
+and to its explicit Kubernetes termination log. Schema `1.1` contains
+`execution_status`, optional `execution_failure_reason`, `exit_code`,
+`requests_started`, `requests_completed`, `requests_succeeded`,
+`request_failures`, `request_timeouts`, and `stuck_workers`. Timeouts are not
+included in request failures, and a worker that has not returned after the
+bounded shutdown grace is not counted as a completed request.
+
+Request failures and timeouts are measured client outcomes rather than
+load-generator execution failures. A run with no stuck worker has
+`execution_status: completed` and exits 0 even when those measured counts are
+nonzero. A stuck worker has `execution_status: failed`, reason `stuck_worker`,
+and exit 4. Configuration/termination-log errors remain ordinary process
+errors. Every nonzero exit remains a failed Kubernetes Job and an invalid M14
+trial. Retained schema-1.0 summaries preserve the former diagnostic exit
+semantics and remain historical evidence; they are not valid schema-1.1 client
+outcome evidence for a new completed trial.
+
 ## ExperimentRecord
-- Schema version (`1.1` for lifecycle-provenance fields; retained `1.0`
-  artifacts remain readable)
+- Schema version (`1.2` adds load execution summary evidence; retained `1.0`
+  and `1.1` artifacts remain readable)
 - Experiment ID
 - Workload configuration
 - Load configuration
@@ -34,6 +52,7 @@ request timeout is capped by the remaining experiment time.
 - Lifecycle state: `running`, `stopped`, `succeeded`, or `failed`
 - Kubernetes Job UID
 - Terminal reason, optional terminal message, and termination source
+- Schema-1.1 load execution summary for new terminal Jobs
 
 Experiment IDs are lowercase DNS-label-safe identifiers. A running record has no
 end timestamp or termination fields. Version 1.1 terminal records have a UTC end
@@ -43,6 +62,14 @@ and failed Job timestamps and reasons come from Job status conditions, with
 the controller clock and stable reasons `UserStopped` and `SubmissionFailed`.
 The submission timestamp is immutable; `job_start_timestamp` records Kubernetes
 `status.startTime` when it becomes available.
+
+For a schema-1.2 succeeded record, the controller also requires exactly one
+Job-owned Pod and a schema-valid termination-log summary. Its exit code must be
+zero, its execution status must be `completed`, and its counts must be
+internally consistent. Missing or contradictory client evidence prevents a new
+successful experiment artifact. Failed/stopped records may lack a summary when
+the generator never reached its final emission; their lifecycle remains
+invalid for M14.
 
 ## WorkloadSnapshot
 - Schema version and UTC observation timestamp
@@ -314,10 +341,12 @@ comparisons record RAG-on/off means, paired differences, standard deviation,
 comparable/missing pair counts, direction, and improved, regressed, or
 inconclusive outcome.
 
-## Planned M14–M17 Contracts
+## M14 and Planned M15–M17 Contracts
 
-The following contracts remain planned. Their concrete schema versions are
-introduced by their owning milestones without changing historical artifacts.
+M14 plan/approval/trial contracts remain at schema 1.0. Effectiveness report
+schema/evaluator 1.1 adds preserved application/client error components while
+retaining schema-1.0 report readability. M15–M17 contracts remain planned and
+will be introduced without changing historical artifacts.
 
 ### LLMQualityDataset and EvaluationReport
 
@@ -336,21 +365,42 @@ introduced by their owning milestones without changing historical artifacts.
 
 ### RecommendationEffectivenessPlan and Report
 
-- Plan/policy version, safe plan ID, source analysis/recommendation/evidence
-  identities and digests, creator and UTC time
-- Cluster/context, namespace, workload/image identity, exact baseline and
-  candidate configurations, intended differences, repeated load plan,
-  observation windows, stop conditions, rollback, cleanup, and artifact roots
-- Exact proposed Kubernetes mutations and separate explicit-approval record;
-  no model-generated value is accepted
-- Trial references bind lifecycle-reconciled ExperimentRecords and immutable
-  Observations with roles, repetitions, timestamps, and source digests
-- Report records comparability/quality checks, confounders, per-trial and
-  aggregate throughput, p95 latency, throttling, CPU, memory, errors,
-  readiness/restarts, target attainment, absolute/relative effects and
-  variability
-- Versioned guardrails yield `effective`, `ineffective`, `harmful`, or
-  `inconclusive`; rollback and cleanup status are separate from the outcome
+M14 schema 1.0 records plan/policy version, safe plan ID, source
+analysis/recommendation/evidence identities and digests, creator, and UTC time.
+It fixes cluster/context, namespace, workload and image identity, exact baseline
+and candidate configurations, their sole intended differences, repeated load
+plan, observation windows, stop conditions, rollback, cleanup, artifact roots,
+and explicit metric objectives and guardrails. Exact proposed Kubernetes
+mutations are data only. A separate approval record may authorize a bounded
+experiment; neither plan construction nor evaluation performs the mutation.
+Every plan requires at least one performance objective and one efficiency
+objective; guardrails remain separate from those success conditions.
+Artifact evaluation requires a positive approval record bound to the exact plan
+ID and digest; missing, denied, or mismatched approval is inconclusive.
+
+Trial references bind lifecycle-reconciled `ExperimentRecord` and immutable
+`ObservationSnapshot` artifacts by role, repetition, identity, timestamp, and
+SHA-256 digest. Per-trial measurements distinguish unavailable values from zero
+and retain evidence IDs and limitations. The report records integrity and
+comparability issues, declared confounders, throughput, p95 latency, throttling,
+CPU, memory, application error rate, client failure rate, their conservative
+maximum error rate, readiness/restarts, target attainment, CPU efficiency,
+absolute and relative effects, and population variation.
+
+The M14 error guardrail uses `max(application_error_ratio,
+client_failure_ratio)`, where the client ratio is
+`(request_failures + request_timeouts) / requests_started`. This avoids
+double-counting an HTTP error visible to both sources while ensuring client-only
+transport failures and timeouts cannot disappear behind a successful Job.
+Either source missing makes the measurement incomplete and therefore
+inconclusive; it is never replaced with zero.
+
+Policy 1.0 yields `effective`, `ineffective`, `harmful`, or `inconclusive`.
+Every required objective must pass for `effective`; a regression guardrail makes
+a sufficient result `harmful`; otherwise a sufficient result is `ineffective`.
+Missing/incomparable evidence, nonterminal lifecycle, insufficient repetitions,
+or digest/identity/configuration mismatch forces `inconclusive`. Rollback and
+cleanup verification remain separate fields and cannot improve the outcome.
 
 ### ArtifactCatalog and LineageGraph
 

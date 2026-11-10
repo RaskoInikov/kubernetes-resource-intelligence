@@ -1,0 +1,21 @@
+{
+  "schema_version": "1.0",
+  "plan_id": "m14-kri-workload-cpu-limit-20261109-v2",
+  "plan_sha256": "e41ce61c3e5a64a7a01b2f35a0c707c6df606e02c294950563fb9f720d39027a",
+  "trials": [
+    {
+      "trial_id": "m14v2-base-1-20261109",
+      "role": "baseline",
+      "repetition": 1,
+      "experiment_id": "m14v2-base-1-20261109",
+      "experiment_path": "results/experiments/m14v2-base-1-20261109.json",
+      "experiment_sha256": "db0c421314801da7f56f149338e77c7b11359cd1d5b7525b6a6f9a356a1547e9",
+      "observation_id": "obs-m14v2-base-1-20261109",
+      "observation_path": "results/observations/obs-m14v2-base-1-20261109.json",
+      "observation_sha256": "e594de2c109b95b66d594c6a400f12458db381a2da727f49dcd4967bda1b4561",
+      "declared_confounders": [
+        "The load Pod never started because the digest-form image reference entered ImagePullBackOff, so no planned load was generated."
+      ]
+    }
+  ]
+}
